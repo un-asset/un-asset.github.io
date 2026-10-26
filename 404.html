@@ -2,27 +2,263 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>물품 정보</title>
-<script>
-  // ▼ 구글 QR 카드(웹앱) 주소. 주소가 바뀌면 이 한 줄만 고치세요.
-  var WEBAPP = 'https://script.google.com/macros/s/AKfycbxfMqPwY45tMT6yZM9Au3KqKKFk-cRH5VPAY5khVu8j93Dfdf_i7GbfjWBfvPu0Dv5Ffw/exec';
-
-  // 주소 끝의 코드(예: /A15)를 읽어서 QR 카드로 이동
-  var code = location.pathname.replace(/^\/+|\/+$/g, '').toUpperCase();
-  var GO = !!(code && code !== 'INDEX.HTML' && code !== '404.HTML');
-  if (GO) {
-    location.replace(WEBAPP + '?q=' + encodeURIComponent(code));
-  }
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#305496">
+<title>유엔 물품관리</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
-  body{font-family:'Malgun Gothic',sans-serif;background:#f2f4f7;color:#333;display:flex;
-       align-items:center;justify-content:center;min-height:100vh;margin:0}
-  .box{background:#fff;padding:24px 28px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.12);text-align:center}
+  :root{--blue:#305496;--blue2:#e8eef8;--bg:#f2f4f7;--card:#fff;--text:#222;--sub:#666;--line:#e5e7eb;--red:#c00000}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);
+       padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  header{background:var(--blue);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;flex:1}
+  header button{background:none;border:0;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px}
+  main{max-width:640px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:12px;overflow:hidden}
+  .pad{padding:14px 16px}
+  input,select,textarea{width:100%;padding:11px 12px;font-size:16px;border:1px solid #ccc;border-radius:8px;font-family:inherit;background:#fff}
+  textarea{min-height:80px;resize:vertical}
+  label{display:block;font-size:13px;color:var(--sub);margin:12px 0 4px}
+  .btn{display:block;width:100%;padding:13px;border:0;border-radius:8px;background:var(--blue);color:#fff;font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit}
+  .btn.sub{background:var(--blue2);color:var(--blue)}
+  .btn:disabled{opacity:.5}
+  .chips{display:flex;gap:6px;overflow-x:auto;padding:10px 0 2px}
+  .chip{flex:none;padding:6px 12px;border-radius:16px;border:1px solid #ccc;background:#fff;font-size:13px;cursor:pointer}
+  .chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .item{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+  .item:last-child{border-bottom:0}
+  .item b{font-size:15px}
+  .item .s{font-size:13px;color:var(--sub);margin-top:3px}
+  .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#fde2e2;color:var(--red);margin-left:4px}
+  .head{background:var(--blue);color:#fff;padding:16px}
+  .head .t{font-size:19px;font-weight:bold;word-break:break-all}
+  .head .s{font-size:13px;opacity:.85;margin-top:4px}
+  table{width:100%;border-collapse:collapse}
+  td{padding:10px 16px;border-bottom:1px solid var(--line);font-size:15px;vertical-align:top}
+  td.k{color:var(--sub);width:90px;white-space:nowrap}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid .btn{padding:14px 6px}
+  nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;
+      padding-bottom:env(safe-area-inset-bottom);z-index:5}
+  nav a{flex:1;text-align:center;padding:9px 0 8px;color:var(--sub);text-decoration:none;font-size:12px}
+  nav a span{display:block;font-size:22px;line-height:26px}
+  nav a.on{color:var(--blue);font-weight:bold}
+  .sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:10}
+  .sheet.show{display:flex}
+  .sheet .box{background:#fff;width:100%;max-width:640px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+  .sheet h3{margin:0 0 4px}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:20;max-width:90%;text-align:center}
+  .muted{color:var(--sub);font-size:13px;text-align:center;padding:24px 0}
+  .err{color:var(--red);font-size:13px;margin-top:8px}
+  video{width:100%;border-radius:12px;background:#000}
+  .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
 </style>
 </head>
 <body>
-  <div class="box"><b>유엔네트웍스 물품관리</b><br><small id="msg">물품에 붙은 QR코드를 휴대폰 카메라로 찍어 주세요.</small></div>
-  <script>if (GO) document.getElementById('msg').textContent = '물품 정보로 이동 중입니다…';</script>
+<header><h1 id="title">유엔 물품관리</h1><button id="reload" title="새로 고침">⟳</button></header>
+<main id="view"><div class="muted">불러오는 중…</div></main>
+<nav>
+  <a href="#/" data-r="home"><span>🔍</span>검색</a>
+  <a href="#/scan" data-r="scan"><span>📷</span>QR 스캔</a>
+  <a href="#/new" data-r="new"><span>➕</span>새 물품</a>
+</nav>
+<div class="sheet" id="sheet"><div class="box" id="sheetBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ▼ 구글 웹앱 주소. 주소가 바뀌면 이 한 줄만 고치세요. (index.html, 404.html 둘 다)
+var WEBAPP = 'https://script.google.com/macros/s/AKfycbxfMqPwY45tMT6yZM9Au3KqKKFk-cRH5VPAY5khVu8j93Dfdf_i7GbfjWBfvPu0Dv5Ffw/exec';
+
+var S = { meta: null, items: null, q: '', site: '전체', hideOld: true };
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k) || ''; localStorage.setItem(k, v); } catch (e) { return ''; } }
+function toast(t) { var el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 3000); }
+
+function api(params) {
+  var qs = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
+  return fetch(WEBAPP + '?' + qs).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) throw new Error(d.error || '오류'); return d;
+  });
+}
+function loadAll(force) {
+  if (S.items && !force) return Promise.resolve();
+  return Promise.all([api({ api: 'meta' }), api({ api: 'list' })]).then(function (r) { S.meta = r[0]; S.items = r[1].items; });
+}
+
+// 라벨 QR(/A15)로 들어오면 그 물품 화면으로
+(function () {
+  var code = location.pathname.replace(/^\/+|\/+$/g, '');
+  if (code && !/\.html$/i.test(code)) history.replaceState(null, '', '/#/i/' + encodeURIComponent(code.toUpperCase()));
+})();
+
+function route() {
+  stopScan(); closeSheet();
+  var parts = location.hash.replace(/^#\/?/, '').split('/');
+  var r = parts[0] || 'home';
+  document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.r === r); });
+  $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
+  loadAll().then(function () {
+    if (r === 'i') return viewItem(decodeURIComponent(parts[1] || ''));
+    if (r === 'scan') return viewScan();
+    if (r === 'new') return viewNew();
+    viewHome();
+  }).catch(function (e) { $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>'; });
+}
+window.addEventListener('hashchange', route);
+$('reload').onclick = function () { S.items = null; route(); toast('최신 내용으로 새로 고쳤어요'); };
+
+// ---------- 검색 ----------
+function viewHome() {
+  $('title').textContent = '유엔 물품관리';
+  var sites = ['전체'].concat(S.meta.sites.map(function (s) { return s.name; }));
+  $('view').innerHTML =
+    '<input id="q" type="search" placeholder="품명, 자산번호, 사용자, 모델명 검색" value="' + esc(S.q) + '">' +
+    '<div class="chips">' + sites.map(function (s) { return '<button class="chip' + (s === S.site ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') + '</div>' +
+    '<label style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" id="old" style="width:auto"' + (S.hideOld ? ' checked' : '') + '> 폐기 물품 숨기기</label>' +
+    '<div id="count" class="hint"></div><div class="card" id="list" style="margin-top:8px"></div>';
+  $('q').oninput = function () { S.q = this.value; renderList(); };
+  $('old').onchange = function () { S.hideOld = this.checked; renderList(); };
+  document.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.site = b.dataset.s; viewHome(); }; });
+  renderList();
+}
+function renderList() {
+  var q = S.q.trim().toLowerCase();
+  var list = S.items.filter(function (it) {
+    if (S.hideOld && it.discarded) return false;
+    if (S.site !== '전체' && it.loc !== S.site) return false;
+    return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.note].join(' ').toLowerCase().indexOf(q) >= 0;
+  });
+  $('count').textContent = list.length + '개';
+  $('list').innerHTML = list.length ? list.slice(0, 200).map(function (it) {
+    return '<div class="item" data-k="' + esc(it.code || it.asset) + '"><b>' + esc(it.asset) + '</b>' + (it.discarded ? '<span class="tag">폐기</span>' : '') +
+      '<div class="s">' + esc([it.name, it.model].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="s">📍 ' + esc(it.loc || '-') + ' &nbsp; 👤 ' + esc(it.user || '-') + '</div></div>';
+  }).join('') : '<div class="muted">찾는 물품이 없어요</div>';
+  document.querySelectorAll('.item').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
+}
+
+// ---------- 물품 화면 ----------
+function findItem(key) {
+  key = String(key).toUpperCase();
+  return S.items.filter(function (x) { return String(x.code).toUpperCase() === key || x.asset.toUpperCase() === key; })[0];
+}
+var LABEL = { '이동': '🚚 이동', '고장': '🔧 고장', '사용자 변경': '👤 사용자 변경', '없음': '❓ 없음' };
+function viewItem(key) {
+  var it = findItem(key);
+  if (!it) { $('view').innerHTML = '<div class="card"><div class="head"><div class="t">물품을 찾을 수 없어요</div></div><div class="pad">코드: ' + esc(key) + '<br><br>라벨을 다시 찍어 보거나 관리자에게 문의해 주세요.</div></div>'; return; }
+  $('title').textContent = '물품 정보';
+  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['사용자', it.user], ['비고', it.note], ['렌탈기간', it.rental]];
+  $('view').innerHTML =
+    '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
+    '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
+    '<div class="card pad"><b>변경 신청</b><p class="hint">관리자가 승인하면 대장에 반영돼요.</p><div class="grid" style="margin-top:10px">' +
+    Object.keys(LABEL).map(function (t) { return '<button class="btn sub" data-t="' + t + '">' + LABEL[t] + '</button>'; }).join('') +
+    '</div><button class="btn sub" data-t="기타" style="margin-top:8px">✏️ 기타 요청</button></div>';
+  document.querySelectorAll('[data-t]').forEach(function (b) { b.onclick = function () { openRequest(it, b.dataset.t); }; });
+}
+function openRequest(it, type) {
+  var others = S.meta.sites.map(function (s) { return s.name; }).filter(function (s) { return s !== it.loc; });
+  var extra = '';
+  if (type === '이동') extra = '<label>이동한 곳</label><select id="f_move"><option value="">선택</option>' + others.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('') + '</select>';
+  if (type === '사용자 변경') extra = '<label>바뀐 사용자</label><input id="f_user" placeholder="이름">';
+  var ph = { '이동': '(선택) 이동 이유 등', '고장': '어떤 상태인지 적어 주세요. 예) 액정 파손', '사용자 변경': '(선택)', '없음': '언제부터 안 보이는지 등', '기타': '요청 내용을 적어 주세요' }[type];
+  openSheet('<h3>' + esc(type) + ' 신청</h3><div class="hint">' + esc(it.asset) + '</div>' + extra +
+    '<label>내용</label><textarea id="f_memo" placeholder="' + esc(ph) + '"></textarea>' +
+    '<label>신청자 이름</label><input id="f_name" placeholder="이름" value="' + esc(store('un_name')) + '">' +
+    '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">신청하기</button>' +
+    '<button class="btn sub" id="f_no" style="margin-top:8px">취소</button>');
+  $('f_no').onclick = closeSheet;
+  $('f_ok').onclick = function () {
+    var p = { api: 'request', type: type, asset: it.asset, memo: $('f_memo').value, requester: $('f_name').value };
+    if ($('f_move')) p.moveTo = $('f_move').value;
+    if ($('f_user')) p.newUser = $('f_user').value;
+    var err = !p.requester.trim() ? '신청자 이름을 적어 주세요.' :
+      (type === '이동' && !p.moveTo) ? '이동한 곳을 골라 주세요.' :
+      (type === '사용자 변경' && !p.newUser.trim()) ? '바뀐 사용자를 적어 주세요.' :
+      ((type === '고장' || type === '기타') && !p.memo.trim()) ? '내용을 적어 주세요.' : '';
+    if (err) { $('f_err').textContent = err; return; }
+    store('un_name', p.requester.trim());
+    var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
+    api(p).then(function () { closeSheet(); toast('신청했어요. 관리자가 승인하면 반영돼요.'); })
+      .catch(function (e) { b.disabled = false; b.textContent = '신청하기'; $('f_err').textContent = e.message; });
+  };
+}
+function openSheet(html) { $('sheetBox').innerHTML = html; $('sheet').classList.add('show'); }
+function closeSheet() { $('sheet').classList.remove('show'); }
+$('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
+
+// ---------- 새 물품 신청 ----------
+function opts(arr) { return '<option value="">선택</option>' + arr.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join(''); }
+function viewNew() {
+  $('title').textContent = '새 물품 등록 신청';
+  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">대장에 없는 물품을 신청해 주세요. 관리자가 승인하면 등록되고 자산번호가 생겨요.</p>' +
+    '<label>현장</label><select id="f_site">' + opts(S.meta.sites.map(function (s) { return s.name; })) + '</select>' +
+    '<label>품명</label><select id="f_pn">' + opts(S.meta.names) + '</select>' +
+    '<p class="hint">찾는 품명이 없으면 비슷한 품명을 고르고 "내용"에 실제 이름을 적어 주세요.</p>' +
+    '<label>모델명</label><input id="f_model"><label>규격사양</label><input id="f_spec">' +
+    '<label>수량</label><input id="f_qty" type="number" min="1" max="99" value="1">' +
+    '<label>사용자</label><input id="f_user"><label>내용</label><textarea id="f_memo" placeholder="(선택)"></textarea>' +
+    '<label>신청자 이름</label><input id="f_name" value="' + esc(store('un_name')) + '">' +
+    '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">등록 신청하기</button></div>';
+  $('f_ok').onclick = function () {
+    var p = { api: 'newitem', site: $('f_site').value, name: $('f_pn').value, model: $('f_model').value, spec: $('f_spec').value,
+      qty: $('f_qty').value, user: $('f_user').value, memo: $('f_memo').value, requester: $('f_name').value };
+    var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.requester.trim() ? '신청자 이름을 적어 주세요.' : '';
+    if (err) { $('f_err').textContent = err; return; }
+    store('un_name', p.requester.trim());
+    var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
+    api(p).then(function () { toast('신청했어요. 관리자가 승인하면 등록돼요.'); viewNew(); })
+      .catch(function (e) { b.disabled = false; b.textContent = '등록 신청하기'; $('f_err').textContent = e.message; });
+  };
+}
+
+// ---------- QR 스캔 ----------
+var SC = { stream: null, raf: 0 };
+function stopScan() {
+  if (SC.raf) cancelAnimationFrame(SC.raf); SC.raf = 0;
+  if (SC.stream) SC.stream.getTracks().forEach(function (t) { t.stop(); }); SC.stream = null;
+}
+function codeFromText(t) {
+  var m = String(t).match(/github\.io\/([A-Za-z0-9]+)/i); if (m) return m[1].toUpperCase();
+  m = String(t).match(/[?&](?:id|q)=([^&]+)/); if (m) return decodeURIComponent(m[1]);
+  return null;
+}
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+}
+function viewScan() {
+  $('title').textContent = 'QR 스캔';
+  $('view').innerHTML = '<div class="card pad"><video id="v" playsinline muted></video><p class="hint">물품 라벨의 QR을 화면에 맞춰 주세요. 9mm 라벨은 5~10cm 거리에서 잘 찍혀요.</p><div id="s_err" class="err"></div></div>';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('s_err').textContent = '이 브라우저에서는 카메라를 쓸 수 없어요. 폰 기본 카메라로 찍어 주세요.'; return; }
+  var detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+  (detector ? Promise.resolve() : loadJsQR()).then(function () {
+    return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  }).then(function (stream) {
+    SC.stream = stream; var v = $('v'); v.srcObject = stream; v.play();
+    var c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), busy = false;
+    function done(txt) {
+      busy = false; if (!txt) return;
+      var code = codeFromText(txt);
+      if (code) { stopScan(); location.hash = '#/i/' + encodeURIComponent(code); }
+      else $('s_err').textContent = '물품 QR이 아니에요: ' + String(txt).slice(0, 60);
+    }
+    (function tick() {
+      SC.raf = requestAnimationFrame(tick);
+      if (busy || v.readyState < 2) return;
+      busy = true;
+      if (detector) detector.detect(v).then(function (r) { done(r[0] && r[0].rawValue); }).catch(function () { busy = false; });
+      else { c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0); var d = x.getImageData(0, 0, c.width, c.height); var r = jsQR(d.data, d.width, d.height); done(r && r.data); }
+    })();
+  }).catch(function (e) { $('s_err').textContent = '카메라를 열 수 없어요. 카메라 권한을 허용해 주세요. (' + e.message + ')'; });
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+route();
+</script>
 </body>
 </html>
