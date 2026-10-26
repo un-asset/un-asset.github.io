@@ -11,7 +11,7 @@
   // 주소 끝의 코드(예: /A15)를 읽어서 QR 카드로 이동
   var code = location.pathname.replace(/^\/+|\/+$/g, '').toUpperCase();
   if (code && code !== 'INDEX.HTML' && code !== '404.HTML') {
-    location.replace(WEBAPP + '?c=' + encodeURIComponent(code));
+    location.replace(WEBAPP + '?q=' + encodeURIComponent(code));
   }
 </script>
 <style>
