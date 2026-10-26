@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>물품 정보</title>
+<script>
+  // ▼ 구글 QR 카드(웹앱) 주소. 주소가 바뀌면 이 한 줄만 고치세요.
+  var WEBAPP = 'https://script.google.com/macros/s/AKfycbxfMqPwY45tMT6yZM9Au3KqKKFk-cRH5VPAY5khVu8j93Dfdf_i7GbfjWBfvPu0Dv5Ffw/exec';
+
+  // 주소 끝의 코드(예: /A15)를 읽어서 QR 카드로 이동
+  var code = location.pathname.replace(/^\/+|\/+$/g, '').toUpperCase();
+  if (code && code !== 'INDEX.HTML' && code !== '404.HTML') {
+    location.replace(WEBAPP + '?c=' + encodeURIComponent(code));
+  }
+</script>
+<style>
+  body{font-family:'Malgun Gothic',sans-serif;background:#f2f4f7;color:#333;display:flex;
+       align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .box{background:#fff;padding:24px 28px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.12);text-align:center}
+</style>
+</head>
+<body>
+  <div class="box">유엔네트웍스 물품관리<br><small>물품 정보로 이동 중입니다…</small></div>
+</body>
+</html>
