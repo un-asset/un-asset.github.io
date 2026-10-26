@@ -10,7 +10,8 @@
 
   // 주소 끝의 코드(예: /A15)를 읽어서 QR 카드로 이동
   var code = location.pathname.replace(/^\/+|\/+$/g, '').toUpperCase();
-  if (code && code !== 'INDEX.HTML' && code !== '404.HTML') {
+  var GO = !!(code && code !== 'INDEX.HTML' && code !== '404.HTML');
+  if (GO) {
     location.replace(WEBAPP + '?q=' + encodeURIComponent(code));
   }
 </script>
@@ -21,6 +22,7 @@
 </style>
 </head>
 <body>
-  <div class="box">유엔네트웍스 물품관리<br><small>물품 정보로 이동 중입니다…</small></div>
+  <div class="box"><b>유엔네트웍스 물품관리</b><br><small id="msg">물품에 붙은 QR코드를 휴대폰 카메라로 찍어 주세요.</small></div>
+  <script>if (GO) document.getElementById('msg').textContent = '물품 정보로 이동 중입니다…';</script>
 </body>
 </html>
