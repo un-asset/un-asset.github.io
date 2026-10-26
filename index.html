@@ -79,10 +79,32 @@ function store(k, v) { try { if (v === undefined) return localStorage.getItem(k)
 function toast(t) { var el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 3000); }
 
 function api(params) {
+  if (params.pin === undefined) params.pin = store('un_pin');   // 한 번 입력한 PIN은 이 기기에 기억
   var qs = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
   return fetch(WEBAPP + '?' + qs).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.needPin) { var e = new Error('PIN이 필요해요'); e.needPin = true; throw e; }
     if (!d.ok) throw new Error(d.error || '오류'); return d;
   });
+}
+
+// ---------- PIN 입력 (처음 한 번만) ----------
+function viewPin(msg) {
+  closeSheet();
+  $('title').textContent = '유엔 물품관리';
+  $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:40px">🔒</div>' +
+    '<b>회사 PIN을 입력해 주세요</b><p class="hint">처음 한 번만 입력하면 이 기기에서는 다시 묻지 않아요.</p>' +
+    '<input id="pin" type="password" inputmode="numeric" autocomplete="off" style="text-align:center;font-size:22px;letter-spacing:6px;margin-top:12px">' +
+    '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">확인</button></div>';
+  $('pin').focus();
+  var go = function () {
+    var v = $('pin').value.trim(); if (!v) return;
+    $('p_ok').disabled = true;
+    api({ api: 'auth', pin: v }).then(function () {
+      store('un_pin', v); S.items = null; route();
+    }).catch(function (e) { $('p_ok').disabled = false; $('p_err').textContent = /PIN|오류/.test(e.message) ? 'PIN이 맞지 않아요.' : e.message; });
+  };
+  $('p_ok').onclick = go;
+  $('pin').onkeydown = function (e) { if (e.key === 'Enter') go(); };
 }
 function loadAll(force) {
   if (S.items && !force) return Promise.resolve();
@@ -106,7 +128,10 @@ function route() {
     if (r === 'scan') return viewScan();
     if (r === 'new') return viewNew();
     viewHome();
-  }).catch(function (e) { $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>'; });
+  }).catch(function (e) {
+    if (e.needPin) return viewPin(store('un_pin') ? 'PIN이 바뀌었어요. 새 PIN을 입력해 주세요.' : '');
+    $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>';
+  });
 }
 window.addEventListener('hashchange', route);
 $('reload').onclick = function () { S.items = null; route(); toast('최신 내용으로 새로 고쳤어요'); };
