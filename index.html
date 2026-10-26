@@ -55,10 +55,20 @@
   .err{color:var(--red);font-size:13px;margin-top:8px}
   video{width:100%;border-radius:12px;background:#000}
   .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
+  #admin{position:relative}
+  #badge{position:absolute;top:0;right:0;background:#e53935;color:#fff;font-size:11px;font-weight:bold;border-radius:9px;min-width:18px;padding:1px 5px;display:none}
+  .rq .top{display:flex;justify-content:space-between;align-items:center}
+  .rq .ty{font-weight:bold;font-size:15px}
+  .rq .dt{font-size:12px;color:var(--sub)}
+  .rq .ln{font-size:14px;margin-top:4px;word-break:break-all}
+  .rq .memo{background:var(--bg);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:14px;white-space:pre-wrap}
+  .rq .act{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:12px}
+  .btn.ok{background:#2e7d32}
+  .btn.no{background:#fde2e2;color:var(--red)}
 </style>
 </head>
 <body>
-<header><h1 id="title">유엔 물품관리</h1><button id="reload" title="새로 고침">⟳</button></header>
+<header><h1 id="title">유엔 물품관리</h1><button id="admin" title="관리">🔐<span id="badge"></span></button><button id="reload" title="새로 고침">⟳</button></header>
 <main id="view"><div class="muted">불러오는 중…</div></main>
 <nav>
   <a href="#/" data-r="home"><span>🔍</span>검색</a>
@@ -83,6 +93,7 @@ function api(params) {
   var qs = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
   return fetch(WEBAPP + '?' + qs).then(function (r) { return r.json(); }).then(function (d) {
     if (d.needPin) { var e = new Error('PIN이 필요해요'); e.needPin = true; throw e; }
+    if (d.needAdmin) { var e2 = new Error(d.error || '관리자 PIN이 맞지 않아요'); e2.needAdmin = true; throw e2; }
     if (!d.ok) throw new Error(d.error || '오류'); return d;
   });
 }
@@ -127,7 +138,8 @@ function route() {
     if (r === 'i') return viewItem(decodeURIComponent(parts[1] || ''));
     if (r === 'scan') return viewScan();
     if (r === 'new') return viewNew();
-    viewHome();
+    if (r === 'admin') return viewAdmin();
+    viewHome(); updateBadge();
   }).catch(function (e) {
     if (e.needPin) return viewPin(store('un_pin') ? 'PIN이 바뀌었어요. 새 PIN을 입력해 주세요.' : '');
     $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>';
@@ -135,6 +147,7 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 $('reload').onclick = function () { S.items = null; route(); toast('최신 내용으로 새로 고쳤어요'); };
+$('admin').onclick = function () { location.hash = '#/admin'; if (location.hash === '#/admin') route(); };
 
 // ---------- 검색 ----------
 function viewHome() {
@@ -313,6 +326,93 @@ function startLive() {
       else { c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0); var d = x.getImageData(0, 0, c.width, c.height); var r = jsQR(d.data, d.width, d.height); done(r && r.data); }
     })();
   }).catch(function (e) { $('l_err').textContent = '카메라를 열 수 없어요. 카메라 권한을 허용해 주세요. (' + e.message + ')'; });
+}
+
+// ---------- 관리 (관리자 PIN 필요) ----------
+var TYPE_ICON = { '이동': '🚚', '고장': '🔧', '사용자 변경': '👤', '없음': '❓', '기타': '✏️', '새 물품': '➕' };
+function aapi(p) { p.apin = store('un_apin'); return api(p); }
+function updateBadge() {
+  if (!store('un_apin')) return;
+  aapi({ api: 'pending' }).then(function (d) {
+    var b = $('badge'); b.textContent = d.items.length; b.style.display = d.items.length ? 'block' : 'none';
+  }).catch(function () {});
+}
+function viewAdminPin(msg) {
+  $('title').textContent = '관리';
+  $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:40px">🔐</div>' +
+    '<b>관리자 PIN을 입력해 주세요</b><p class="hint">관리자만 요청을 승인할 수 있어요. 이 기기에서는 다시 묻지 않아요.</p>' +
+    '<input id="apin" type="password" inputmode="numeric" autocomplete="off" style="text-align:center;font-size:22px;letter-spacing:6px;margin-top:12px">' +
+    '<div id="a_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="a_ok" style="margin-top:12px">확인</button></div>';
+  $('apin').focus();
+  var go = function () {
+    var v = $('apin').value.trim(); if (!v) return;
+    $('a_ok').disabled = true;
+    api({ api: 'adminauth', apin: v }).then(function () { store('un_apin', v); viewAdmin(); })
+      .catch(function (e) { $('a_ok').disabled = false; $('a_err').textContent = e.message; });
+  };
+  $('a_ok').onclick = go;
+  $('apin').onkeydown = function (e) { if (e.key === 'Enter') go(); };
+}
+function viewAdmin() {
+  if (!store('un_apin')) return viewAdminPin();
+  $('title').textContent = '요청 관리';
+  $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
+  aapi({ api: 'pending' }).then(function (d) {
+    var list = d.items.slice().reverse();   // 최근 요청이 위로
+    $('badge').textContent = list.length; $('badge').style.display = list.length ? 'block' : 'none';
+    $('view').innerHTML = '<div class="hint" style="margin:0 0 10px">대기 중인 요청 <b id="cnt">' + list.length + '</b>건 · 승인하면 바로 대장에 반영돼요.</div>' +
+      (list.length ? list.map(rqCard).join('') : '<div class="card"><div class="muted">대기 중인 요청이 없어요 👍</div></div>') +
+      '<p class="hint" style="text-align:center;margin-top:20px"><a href="#" id="a_out" style="color:var(--sub)">이 기기에서 관리자 PIN 지우기</a></p>';
+    list.forEach(function (x) {
+      var el = $('rq' + x.row);
+      el.querySelector('.ok').onclick = function () { decide(x, true, '', el); };
+      el.querySelector('.no').onclick = function () { askReject(x, el); };
+    });
+    $('a_out').onclick = function (e) { e.preventDefault(); store('un_apin', ''); $('badge').style.display = 'none'; location.hash = '#/'; toast('관리자 PIN을 지웠어요'); };
+  }).catch(function (e) {
+    if (e.needAdmin) { store('un_apin', ''); return viewAdminPin('관리자 PIN이 바뀌었어요. 다시 입력해 주세요.'); }
+    if (e.needPin) return viewPin('PIN이 바뀌었어요. 새 PIN을 입력해 주세요.');
+    $('view').innerHTML = '<div class="card pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>';
+  });
+}
+function rqCard(x) {
+  var lines = [];
+  if (x.type === '새 물품') {
+    lines.push('📍 ' + x.site + ' · ' + x.name + (x.qty ? ' × ' + x.qty : ''));
+    if (x.model || x.spec) lines.push([x.model, x.spec].filter(Boolean).join(' · '));
+    if (x.newUser) lines.push('👤 사용자: ' + x.newUser);
+  } else {
+    lines.push('<a href="#/i/' + encodeURIComponent(x.asset) + '">' + esc(x.asset) + '</a>' + (x.name ? ' · ' + esc(x.name) : ''));
+    if (x.type === '이동') lines.push('🚚 ' + esc(x.site || '-') + ' → <b>' + esc(x.moveTo) + '</b>');
+    if (x.type === '사용자 변경') lines.push('👤 새 사용자: <b>' + esc(x.newUser) + '</b>');
+  }
+  return '<div class="card pad rq" id="rq' + x.row + '"><div class="top"><span class="ty">' + (TYPE_ICON[x.type] || '') + ' ' + esc(x.type) + '</span>' +
+    '<span class="dt">' + esc(x.date) + '</span></div>' +
+    lines.map(function (l, i) { return '<div class="ln">' + (x.type === '새 물품' ? esc(l) : l) + '</div>'; }).join('') +
+    '<div class="ln" style="color:var(--sub);font-size:13px">신청: ' + esc(x.requester) + '</div>' +
+    (x.memo ? '<div class="memo">' + esc(x.memo) + '</div>' : '') +
+    '<div class="act"><button class="btn ok">✅ 승인</button><button class="btn no">반려</button></div></div>';
+}
+function askReject(x, el) {
+  openSheet('<h3>반려</h3><div class="hint">' + esc(x.type + ' · ' + (x.asset || x.name)) + '</div>' +
+    '<label>반려 사유 (선택)</label><textarea id="r_why" placeholder="비워 둬도 돼요"></textarea>' +
+    '<button class="btn no" id="r_ok" style="margin-top:14px">반려하기</button><button class="btn sub" id="r_no" style="margin-top:8px">취소</button>');
+  $('r_no').onclick = closeSheet;
+  $('r_ok').onclick = function () { closeSheet(); decide(x, false, $('r_why').value, el); };
+}
+function decide(x, ok, reason, el) {
+  var bs = el.querySelectorAll('button'); bs.forEach(function (b) { b.disabled = true; });
+  bs[0].textContent = ok ? '처리 중…' : bs[0].textContent;
+  aapi({ api: 'decide', row: x.row, date: x.date, type: x.type, ok: ok ? '1' : '0', reason: reason }).then(function (d) {
+    el.remove(); S.items = null;
+    var c = $('cnt'), n = Math.max(0, parseInt(c.textContent, 10) - 1); c.textContent = n;
+    $('badge').textContent = n; $('badge').style.display = n ? 'block' : 'none';
+    toast(d.status === '반려' ? '반려했어요' : d.status === '승인' ? d.result : '반영했어요: ' + d.result);
+  }).catch(function (e) {
+    bs.forEach(function (b) { b.disabled = false; }); bs[0].textContent = '✅ 승인';
+    if (e.needAdmin) { store('un_apin', ''); return viewAdminPin('관리자 PIN이 바뀌었어요. 다시 입력해 주세요.'); }
+    toast(e.message);
+  });
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
