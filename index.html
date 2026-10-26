@@ -233,9 +233,10 @@ function loadJsQR() {
 }
 function viewScan() {
   $('title').textContent = 'QR 스캔';
-  $('view').innerHTML = '<div class="card pad"><video id="v" playsinline muted></video>' +
-    '<div id="zoomBox" style="display:none;margin-top:10px"><label style="margin:0">확대 (흐리면 폰을 조금 떨어뜨리고 확대해 보세요)</label><input id="zoom" type="range" style="padding:0"></div>' +
-    '<p class="hint">라벨 QR을 화면에 맞춰 주세요. 초점이 안 맞으면 10~15cm 떨어져서 확대해 보세요.</p>' +
+  $('view').innerHTML = '<div class="card pad"><div id="vbox" style="position:relative">' +
+    '<video id="v" playsinline muted></video>' +
+    '<div id="ring" style="position:absolute;width:64px;height:64px;margin:-32px 0 0 -32px;border:2px solid #ffd54f;border-radius:50%;display:none;pointer-events:none;transition:transform .3s"></div></div>' +
+    '<p class="hint">라벨 QR을 화면에 맞추고, 흐리면 <b>화면의 QR 부분을 눌러</b> 초점을 맞춰 주세요. 폰을 10~15cm 떨어뜨리면 더 잘 잡혀요.</p>' +
     '<label class="btn sub" style="margin-top:12px;text-align:center;color:var(--blue);font-size:15px">📸 사진으로 찍어서 읽기<input id="photo" type="file" accept="image/*" capture="environment" style="display:none"></label>' +
     '<div id="s_err" class="err"></div></div>';
   // 사진으로 읽기: 폰 기본 카메라(자동 초점)로 찍은 사진에서 QR 찾기
@@ -266,13 +267,28 @@ function viewScan() {
     SC.stream = stream; var v = $('v'); v.srcObject = stream; v.play();
     var track = stream.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {};
     if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
-    if (caps.zoom) {   // 확대 기능이 있는 폰이면 확대 막대 표시
-      var z = $('zoom'); z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 0.1;
-      z.value = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2));
-      track.applyConstraints({ advanced: [{ zoom: +z.value }] }).catch(function () {});
-      z.oninput = function () { track.applyConstraints({ advanced: [{ zoom: +z.value }] }).catch(function () {}); };
-      $('zoomBox').style.display = 'block';
-    }
+    // 확대 기능이 있는 폰이면 조금(2배) 확대해 둠 → 조금 떨어져서 찍어도 QR이 커 보여 초점이 잘 맞음
+    if (caps.zoom) track.applyConstraints({ advanced: [{ zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2)) }] }).catch(function () {});
+    // 화면을 누르면 그 지점에 초점 맞추기
+    $('vbox').onclick = function (e) {
+      var rect = v.getBoundingClientRect(), px = (e.clientX - rect.left) / rect.width, py = (e.clientY - rect.top) / rect.height;
+      var ring = $('ring'); ring.style.left = (px * 100) + '%'; ring.style.top = (py * 100) + '%';
+      ring.style.display = 'block'; ring.style.transform = 'scale(1.3)';
+      setTimeout(function () { ring.style.transform = 'scale(1)'; }, 50);
+      setTimeout(function () { ring.style.display = 'none'; }, 1200);
+      var modes = caps.focusMode || [];
+      var c = { pointsOfInterest: [{ x: px, y: py }] };
+      if (modes.indexOf('single-shot') >= 0) c.focusMode = 'single-shot';
+      else if (modes.indexOf('manual') >= 0 && modes.indexOf('continuous') >= 0) c.focusMode = 'continuous';
+      track.applyConstraints({ advanced: [c] }).catch(function () {
+        // 지점 초점을 지원하지 않는 폰: 자동초점을 껐다 켜서 다시 잡게 함
+        if (modes.indexOf('manual') >= 0) track.applyConstraints({ advanced: [{ focusMode: 'manual' }] })
+          .then(function () { return track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }).catch(function () {});
+      });
+      // 한 번 초점을 잡은 뒤 다시 연속 자동초점으로
+      if (c.focusMode === 'single-shot' && modes.indexOf('continuous') >= 0)
+        setTimeout(function () { track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {}); }, 2500);
+    };
     var c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), busy = false;
     function done(txt) {
       busy = false; if (!txt) return;
