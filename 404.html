@@ -274,7 +274,9 @@ function codeFromText(t) {
 }
 function loadJsQR() {
   if (window.jsQR) return Promise.resolve();
-  return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+  // 저장소에 올린 /jsQR.js를 먼저 쓰고, 없으면 외부(cdn)에서 불러와요.
+  function load(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = function () { window.jsQR ? ok() : no(); }; s.onerror = no; document.head.appendChild(s); }); }
+  return load('/jsQR.js').catch(function () { return load('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'); });
 }
 function viewScan() {
   $('title').textContent = 'QR 스캔';
