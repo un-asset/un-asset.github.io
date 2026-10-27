@@ -178,13 +178,13 @@ function renderList() {
   var list = S.items.filter(function (it) {
     if (S.hideOld && it.discarded) return false;
     if (S.site !== '전체' && it.loc !== S.site) return false;
-    return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.note].join(' ').toLowerCase().indexOf(q) >= 0;
+    return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.detail, it.note].join(' ').toLowerCase().indexOf(q) >= 0;
   });
   $('count').textContent = list.length + '개';
   $('list').innerHTML = list.length ? list.slice(0, 200).map(function (it) {
     return '<div class="item" data-k="' + esc(it.code || it.asset) + '"><b>' + esc(it.asset) + '</b>' + (it.discarded ? '<span class="tag">폐기</span>' : '') +
       '<div class="s">' + esc([it.name, it.model].filter(Boolean).join(' · ')) + '</div>' +
-      '<div class="s">📍 ' + esc(it.loc || '-') + ' &nbsp; 👤 ' + esc(it.user || '-') + '</div></div>';
+      '<div class="s">📍 ' + esc(it.loc || '-') + (it.detail ? ' · ' + esc(it.detail) : '') + ' &nbsp; 👤 ' + esc(it.user || '-') + '</div></div>';
   }).join('') : '<div class="muted">찾는 물품이 없어요</div>';
   document.querySelectorAll('.item').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
 }
@@ -199,7 +199,7 @@ function viewItem(key) {
   var it = findItem(key);
   if (!it) { $('view').innerHTML = '<div class="card"><div class="head"><div class="t">물품을 찾을 수 없어요</div></div><div class="pad">코드: ' + esc(key) + '<br><br>라벨을 다시 찍어 보거나 관리자에게 문의해 주세요.</div></div>'; return; }
   $('title').textContent = '물품 정보';
-  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['사용자', it.user], ['비고', it.note], ['렌탈기간', it.rental]];
+  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['상세위치', it.detail], ['사용자', it.user], ['비고', it.note], ['렌탈기간', it.rental]];
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
@@ -209,9 +209,12 @@ function viewItem(key) {
   document.querySelectorAll('[data-t]').forEach(function (b) { b.onclick = function () { openRequest(it, b.dataset.t); }; });
 }
 function openRequest(it, type) {
-  var others = S.meta.sites.map(function (s) { return s.name; }).filter(function (s) { return s !== it.loc; });
+  var sites = S.meta.sites.map(function (s) { return s.name; });
   var extra = '';
-  if (type === '이동') extra = '<label>이동한 곳</label><select id="f_move"><option value="">선택</option>' + others.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('') + '</select>';
+  if (type === '이동') extra = '<label>이동한 현장</label><select id="f_move">' + sites.map(function (s) {
+      return '<option value="' + esc(s) + '"' + (s === it.loc ? ' selected' : '') + '>' + esc(s) + (s === it.loc ? ' (지금 현장 그대로)' : '') + '</option>'; }).join('') + '</select>' +
+    '<label>상세위치</label><input id="f_detail" placeholder="예) 탕비실 정면 하단박스" value="">' +
+    '<p class="hint">지금: ' + esc((it.loc || '-') + (it.detail ? ' · ' + it.detail : '')) + ' · 같은 현장 안에서 자리만 옮겼으면 상세위치만 적어 주세요.</p>';
   if (type === '사용자 변경') extra = '<label>바뀐 사용자</label><input id="f_user" placeholder="이름">';
   var ph = { '이동': '(선택) 이동 이유 등', '고장': '어떤 상태인지 적어 주세요. 예) 액정 파손', '사용자 변경': '(선택)', '없음': '언제부터 안 보이는지 등', '기타': '요청 내용을 적어 주세요' }[type];
   openSheet('<h3>' + esc(type) + ' 신청</h3><div class="hint">' + esc(it.asset) + '</div>' + extra +
@@ -222,10 +225,11 @@ function openRequest(it, type) {
   $('f_no').onclick = closeSheet;
   $('f_ok').onclick = function () {
     var p = { api: 'request', type: type, asset: it.asset, memo: $('f_memo').value, requester: $('f_name').value };
-    if ($('f_move')) p.moveTo = $('f_move').value;
+    if ($('f_move')) { p.moveTo = $('f_move').value; p.detail = $('f_detail').value.trim(); }
     if ($('f_user')) p.newUser = $('f_user').value;
     var err = !p.requester.trim() ? '신청자 이름을 적어 주세요.' :
-      (type === '이동' && !p.moveTo) ? '이동한 곳을 골라 주세요.' :
+      (type === '이동' && !p.moveTo) ? '이동한 현장을 골라 주세요.' :
+      (type === '이동' && p.moveTo === it.loc && !p.detail) ? '같은 현장 안에서 옮겼으면 상세위치를 적어 주세요.' :
       (type === '사용자 변경' && !p.newUser.trim()) ? '바뀐 사용자를 적어 주세요.' :
       ((type === '고장' || type === '기타') && !p.memo.trim()) ? '내용을 적어 주세요.' : '';
     if (err) { $('f_err').textContent = err; return; }
@@ -248,12 +252,12 @@ function viewNew() {
     '<p class="hint">찾는 품명이 없으면 비슷한 품명을 고르고 "내용"에 실제 이름을 적어 주세요.</p>' +
     '<label>모델명</label><input id="f_model"><label>규격사양</label><input id="f_spec">' +
     '<label>수량</label><input id="f_qty" type="number" min="1" max="99" value="1">' +
-    '<label>사용자</label><input id="f_user"><label>내용</label><textarea id="f_memo" placeholder="(선택)"></textarea>' +
+    '<label>사용자</label><input id="f_user"><label>상세위치</label><input id="f_detail" placeholder="예) 탕비실 정면 하단박스"><label>내용</label><textarea id="f_memo" placeholder="(선택)"></textarea>' +
     '<label>신청자 이름</label><input id="f_name" placeholder="이름">' +
     '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">등록 신청하기</button></div>';
   $('f_ok').onclick = function () {
     var p = { api: 'newitem', site: $('f_site').value, name: $('f_pn').value, model: $('f_model').value, spec: $('f_spec').value,
-      qty: $('f_qty').value, user: $('f_user').value, memo: $('f_memo').value, requester: $('f_name').value };
+      qty: $('f_qty').value, user: $('f_user').value, detail: $('f_detail').value, memo: $('f_memo').value, requester: $('f_name').value };
     var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.requester.trim() ? '신청자 이름을 적어 주세요.' : '';
     if (err) { $('f_err').textContent = err; return; }
     var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
@@ -351,12 +355,12 @@ function viewAdmin() {
 function rqCard(x) {
   var lines = [];
   if (x.type === '새 물품') {
-    lines.push('📍 ' + x.site + ' · ' + x.name + (x.qty ? ' × ' + x.qty : ''));
+    lines.push('📍 ' + x.site + (x.detail ? ' · ' + x.detail : '') + ' · ' + x.name + (x.qty ? ' × ' + x.qty : ''));
     if (x.model || x.spec) lines.push([x.model, x.spec].filter(Boolean).join(' · '));
     if (x.newUser) lines.push('👤 사용자: ' + x.newUser);
   } else {
     lines.push('<a href="#/i/' + encodeURIComponent(x.asset) + '">' + esc(x.asset) + '</a>' + (x.name ? ' · ' + esc(x.name) : ''));
-    if (x.type === '이동') lines.push('🚚 ' + esc(x.site || '-') + ' → <b>' + esc(x.moveTo) + '</b>');
+    if (x.type === '이동') lines.push('🚚 ' + esc((x.site || '-') + (x.oldDetail ? ' · ' + x.oldDetail : '')) + ' → <b>' + esc(x.moveTo + (x.detail ? ' · ' + x.detail : '')) + '</b>');
     if (x.type === '사용자 변경') lines.push('👤 새 사용자: <b>' + esc(x.newUser) + '</b>');
   }
   return '<div class="card pad rq" id="rq' + x.row + '"><div class="top"><span class="ty">' + (TYPE_ICON[x.type] || '') + ' ' + esc(x.type) + '</span>' +
