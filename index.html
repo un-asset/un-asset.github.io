@@ -178,7 +178,7 @@ function renderList() {
   var list = S.items.filter(function (it) {
     if (S.hideOld && it.discarded) return false;
     if (S.site !== '전체' && it.loc !== S.site) return false;
-    return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.detail, it.note].join(' ').toLowerCase().indexOf(q) >= 0;
+    return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.detail, it.note, it.vendor].join(' ').toLowerCase().indexOf(q) >= 0;
   });
   $('count').textContent = list.length + '개';
   $('list').innerHTML = list.length ? list.slice(0, 200).map(function (it) {
@@ -199,7 +199,7 @@ function viewItem(key) {
   var it = findItem(key);
   if (!it) { $('view').innerHTML = '<div class="card"><div class="head"><div class="t">물품을 찾을 수 없어요</div></div><div class="pad">코드: ' + esc(key) + '<br><br>라벨을 다시 찍어 보거나 관리자에게 문의해 주세요.</div></div>'; return; }
   $('title').textContent = '물품 정보';
-  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['상세위치', it.detail], ['사용자', it.user], ['비고', it.note], ['렌탈기간', it.rental]];
+  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['상세위치', it.detail], ['사용자', it.user], ['비고', it.note], ['렌탈업체', it.vendor], ['렌탈기간', it.rental]];
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
