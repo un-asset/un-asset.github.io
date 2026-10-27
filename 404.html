@@ -53,7 +53,6 @@
   .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;z-index:20;max-width:90%;text-align:center}
   .muted{color:var(--sub);font-size:13px;text-align:center;padding:24px 0}
   .err{color:var(--red);font-size:13px;margin-top:8px}
-  video{width:100%;border-radius:12px;background:#000}
   .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
   #admin{position:relative;display:none}
   header button svg{display:block;width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -84,6 +83,7 @@
 // ▼ 구글 웹앱 주소. 주소가 바뀌면 이 한 줄만 고치세요. (index.html, 404.html 둘 다)
 var WEBAPP = 'https://script.google.com/macros/s/AKfycbxfMqPwY45tMT6yZM9Au3KqKKFk-cRH5VPAY5khVu8j93Dfdf_i7GbfjWBfvPu0Dv5Ffw/exec';
 
+try { localStorage.removeItem('un_name'); } catch (e) {}   // 예전에 기억한 신청자 이름 지우기
 var S = { meta: null, items: null, q: '', site: '전체', hideOld: true };
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -131,7 +131,7 @@ function loadAll(force) {
 })();
 
 function route() {
-  stopScan(); closeSheet();
+  closeSheet();
   $('admin').style.display = store('un_apin') ? 'block' : 'none';
   var parts = location.hash.replace(/^#\/?/, '').split('/');
   var r = parts[0] || 'home';
@@ -216,7 +216,7 @@ function openRequest(it, type) {
   var ph = { '이동': '(선택) 이동 이유 등', '고장': '어떤 상태인지 적어 주세요. 예) 액정 파손', '사용자 변경': '(선택)', '없음': '언제부터 안 보이는지 등', '기타': '요청 내용을 적어 주세요' }[type];
   openSheet('<h3>' + esc(type) + ' 신청</h3><div class="hint">' + esc(it.asset) + '</div>' + extra +
     '<label>내용</label><textarea id="f_memo" placeholder="' + esc(ph) + '"></textarea>' +
-    '<label>신청자 이름</label><input id="f_name" placeholder="이름" value="' + esc(store('un_name')) + '">' +
+    '<label>신청자 이름</label><input id="f_name" placeholder="이름">' +
     '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">신청하기</button>' +
     '<button class="btn sub" id="f_no" style="margin-top:8px">취소</button>');
   $('f_no').onclick = closeSheet;
@@ -229,7 +229,6 @@ function openRequest(it, type) {
       (type === '사용자 변경' && !p.newUser.trim()) ? '바뀐 사용자를 적어 주세요.' :
       ((type === '고장' || type === '기타') && !p.memo.trim()) ? '내용을 적어 주세요.' : '';
     if (err) { $('f_err').textContent = err; return; }
-    store('un_name', p.requester.trim());
     var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
     api(p).then(function () { closeSheet(); toast('신청했어요. 관리자가 승인하면 반영돼요.'); })
       .catch(function (e) { b.disabled = false; b.textContent = '신청하기'; $('f_err').textContent = e.message; });
@@ -250,14 +249,13 @@ function viewNew() {
     '<label>모델명</label><input id="f_model"><label>규격사양</label><input id="f_spec">' +
     '<label>수량</label><input id="f_qty" type="number" min="1" max="99" value="1">' +
     '<label>사용자</label><input id="f_user"><label>내용</label><textarea id="f_memo" placeholder="(선택)"></textarea>' +
-    '<label>신청자 이름</label><input id="f_name" value="' + esc(store('un_name')) + '">' +
+    '<label>신청자 이름</label><input id="f_name" placeholder="이름">' +
     '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">등록 신청하기</button></div>';
   $('f_ok').onclick = function () {
     var p = { api: 'newitem', site: $('f_site').value, name: $('f_pn').value, model: $('f_model').value, spec: $('f_spec').value,
       qty: $('f_qty').value, user: $('f_user').value, memo: $('f_memo').value, requester: $('f_name').value };
     var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.requester.trim() ? '신청자 이름을 적어 주세요.' : '';
     if (err) { $('f_err').textContent = err; return; }
-    store('un_name', p.requester.trim());
     var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
     api(p).then(function () { toast('신청했어요. 관리자가 승인하면 등록돼요.'); viewNew(); })
       .catch(function (e) { b.disabled = false; b.textContent = '등록 신청하기'; $('f_err').textContent = e.message; });
@@ -265,11 +263,6 @@ function viewNew() {
 }
 
 // ---------- QR 스캔 ----------
-var SC = { stream: null, raf: 0 };
-function stopScan() {
-  if (SC.raf) cancelAnimationFrame(SC.raf); SC.raf = 0;
-  if (SC.stream) SC.stream.getTracks().forEach(function (t) { t.stop(); }); SC.stream = null;
-}
 function codeFromText(t) {
   var m = String(t).match(/github\.io\/([A-Za-z0-9]+)/i); if (m) return m[1].toUpperCase();
   m = String(t).match(/[?&](?:id|q)=([^&]+)/); if (m) return decodeURIComponent(m[1]);
@@ -285,8 +278,7 @@ function viewScan() {
     '<label class="btn" style="text-align:center;padding:22px;font-size:17px">📸 사진으로 찍기<input id="photo" type="file" accept="image/*" capture="environment" style="display:none"></label>' +
     '<p class="hint">폰 카메라가 열리면 라벨 QR이 화면 가운데에 크게 나오게 찍어 주세요. 찍으면 바로 물품 화면으로 넘어가요.</p>' +
     '<div id="s_err" class="err"></div></div>' +
-    '<div class="card pad"><b>더 간단한 방법</b><p class="hint">앱을 열지 않고 폰 기본 카메라로 라벨을 비추기만 해도 물품 화면이 열려요.</p></div>' +
-    '<button class="btn sub" id="live">실시간 스캔 (초점이 잘 안 맞을 수 있어요)</button><div id="liveBox" style="margin-top:10px"></div>';
+    '<div class="card pad"><b>더 간단한 방법</b><p class="hint">앱을 열지 않고 폰 기본 카메라로 라벨을 비추기만 해도 물품 화면이 열려요.</p></div>';
   $('photo').onchange = function () {
     var f = this.files[0]; if (!f) return;
     $('s_err').textContent = '사진을 읽는 중…';
@@ -306,37 +298,8 @@ function viewScan() {
     }).catch(function () { $('s_err').textContent = 'QR 읽기 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'; });
     this.value = '';
   };
-  $('live').onclick = startLive;
 }
 
-function startLive() {
-  $('live').style.display = 'none';
-  $('liveBox').innerHTML = '<div class="card pad"><video id="v" playsinline muted></video><p class="hint">라벨에서 10~15cm 떨어져서 비춰 주세요.</p><div id="l_err" class="err"></div></div>';
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('l_err').textContent = '이 브라우저에서는 실시간 카메라를 쓸 수 없어요. 위의 "사진으로 찍기"를 써 주세요.'; return; }
-  var detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
-  (detector ? Promise.resolve() : loadJsQR()).then(function () {
-    return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
-  }).then(function (stream) {
-    SC.stream = stream; var v = $('v'); v.srcObject = stream; v.play();
-    var track = stream.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {};
-    if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
-    if (caps.zoom) track.applyConstraints({ advanced: [{ zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2)) }] }).catch(function () {});
-    var c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), busy = false;
-    function done(txt) {
-      busy = false; if (!txt) return;
-      var code = codeFromText(txt);
-      if (code) { stopScan(); location.hash = '#/i/' + encodeURIComponent(code); }
-      else $('l_err').textContent = '물품 QR이 아니에요: ' + String(txt).slice(0, 60);
-    }
-    (function tick() {
-      SC.raf = requestAnimationFrame(tick);
-      if (busy || v.readyState < 2) return;
-      busy = true;
-      if (detector) detector.detect(v).then(function (r) { done(r[0] && r[0].rawValue); }).catch(function () { busy = false; });
-      else { c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0); var d = x.getImageData(0, 0, c.width, c.height); var r = jsQR(d.data, d.width, d.height); done(r && r.data); }
-    })();
-  }).catch(function (e) { $('l_err').textContent = '카메라를 열 수 없어요. 카메라 권한을 허용해 주세요. (' + e.message + ')'; });
-}
 
 // ---------- 관리 (관리자 PIN 필요) ----------
 var TYPE_ICON = { '이동': '🚚', '고장': '🔧', '사용자 변경': '👤', '없음': '❓', '기타': '✏️', '새 물품': '➕' };
