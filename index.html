@@ -360,8 +360,9 @@ function viewLabel() {
     '<label>현장 (출처 시트)</label><select id="l_site">' + sites.map(function (s) { return '<option' + (s === pre.site ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
     '<label>시작 행 (비우면 전체)</label><input id="l_start" type="number" min="5" max="500" value="' + (pre.start || '') + '" placeholder="예) 42 → 42행부터 (새로 넣은 물품만)">' +
     '<div id="l_info" class="hint" style="margin-top:10px"></div>' +
-    '<button class="btn" id="l_ok" style="margin-top:12px">📥 엑셀 받기</button></div>' +
-    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint" style="line-height:1.7">① PC에서 <b>P-touch Editor</b> 실행 → 저장해 둔 라벨 파일 열기 (처음이면 새로 만들기, 인쇄 매체 9mm)<br>② 오른쪽 위 <b>[데이터베이스]</b> → [찾아보기…]로 받은 엑셀 선택 → 미리 보기에서 <b>라벨출력</b> 선택<br>③ <b>"머리글 행에 필드 이름 포함" 체크 해제</b> → [확인]<br>④ 아래 목록의 <b>F1</b>을 텍스트에, <b>F2</b>를 바코드(QR)에 끌어다 놓기 (이미 연결된 라벨 파일이면 건너뛰기)<br>⑤ 아래 목록에서 뽑을 줄만 체크 → 왼쪽 위 <b>[인쇄]</b></p></div>';
+    '<button class="btn" id="l_ok" style="margin-top:12px">📥 엑셀 받기</button>' +
+    '<a class="btn sub" href="/label_9mm.lbx" download="label_9mm.lbx" style="text-align:center;text-decoration:none;margin-top:8px">📄 라벨 양식(.lbx) 받기 <span style="font-weight:normal">(처음 한 번)</span></a></div>' +
+    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint" style="line-height:1.7">① 위에서 현장을 고르고 <b>[📥 엑셀 받기]</b><br>② PC에서 <b>P-touch Editor</b> 실행 → 라벨 양식 <b>label_9mm.lbx</b> 열기 (없으면 위 [📄 라벨 양식 받기]로 먼저 받기)<br>③ 오른쪽 위 <b>[데이터베이스]</b> → [찾아보기…]로 ①에서 받은 엑셀 선택 → 미리 보기에서 <b>라벨출력</b> 선택<br>④ <b>"머리글 행에 필드 이름 포함" 체크 해제</b> → [확인]<br>⑤ 아래 목록 위 파일 이름이 방금 받은 파일로 바뀌었는지 확인 (라벨 모양 · F1 · F2 연결은 그대로)<br>⑥ 뽑을 줄만 체크 → 왼쪽 위 <b>[인쇄]</b><br><span style="color:#999">다른 현장도 ①에서 그 현장을 골라 받은 엑셀로 ③만 다시 하면 돼요.</span></p></div>';
   var pick = function () {
     var site = $('l_site').value, st = parseInt($('l_start').value, 10) || 5;
     return S.items.filter(function (x) { return x.sheet === site && x.row >= st && !x.discarded && x.code; })
