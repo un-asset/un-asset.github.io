@@ -361,7 +361,7 @@ function viewLabel() {
     '<label>시작 행 (비우면 전체)</label><input id="l_start" type="number" min="5" max="500" value="' + (pre.start || '') + '" placeholder="예) 42 → 42행부터 (새로 넣은 물품만)">' +
     '<div id="l_info" class="hint" style="margin-top:10px"></div>' +
     '<button class="btn" id="l_ok" style="margin-top:12px">📥 엑셀 받기</button></div>' +
-    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint">① 템플릿(.lbx) 열기 → ② 데이터베이스 → 연결 → 받은 파일의 "라벨출력" 시트 선택 (머리글 체크 해제) → ③ F1 = 자산번호, F2 = QR → ④ 인쇄</p></div>';
+    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint">① PC에서 <b>P-touch Editor</b> 실행 → ② 템플릿(.lbx) 열기 → ③ [데이터베이스 → 연결] → 받은 파일의 "라벨출력" 시트 선택 (머리글 체크 해제) → ④ F1 = 자산번호, F2 = QR 확인 → ⑤ [인쇄]</p></div>';
   var pick = function () {
     var site = $('l_site').value, st = parseInt($('l_start').value, 10) || 5;
     return S.items.filter(function (x) { return x.sheet === site && x.row >= st && !x.discarded && x.code; })
