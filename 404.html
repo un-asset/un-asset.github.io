@@ -54,10 +54,8 @@
   .muted{color:var(--sub);font-size:13px;text-align:center;padding:24px 0}
   .err{color:var(--red);font-size:13px;margin-top:8px}
   .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
-  #admin{position:relative;display:none}
   header button svg{display:block;width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .foot{text-align:center;margin:28px 0 8px;font-size:12px}.foot a{color:#999;text-decoration:none}
-  #badge{position:absolute;top:0;right:0;background:#e53935;color:#fff;font-size:11px;font-weight:bold;border-radius:9px;min-width:18px;padding:1px 5px;display:none}
   .rq .top{display:flex;justify-content:space-between;align-items:center}
   .rq .ty{font-weight:bold;font-size:15px}
   .rq .dt{font-size:12px;color:var(--sub)}
@@ -72,7 +70,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="title">유엔 물품관리</h1><button id="admin" title="알림 (대기 중인 요청)"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg><span id="badge"></span></button><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
+<header><h1 id="title">유엔 물품관리</h1><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
 <main id="view"><div class="muted">불러오는 중…</div></main>
 <nav>
   <a href="#/" data-r="home"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>검색</a>
@@ -135,7 +133,6 @@ function loadAll(force) {
 
 function route() {
   closeSheet();
-  $('admin').style.display = store('un_apin') ? 'block' : 'none';
   var parts = location.hash.replace(/^#\/?/, '').split('/');
   var r = parts[0] || 'home';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.r === r); });
@@ -144,10 +141,10 @@ function route() {
     if (r === 'i') return viewItem(decodeURIComponent(parts[1] || ''));
     if (r === 'scan') return viewScan();
     if (r === 'new') return viewNew();
-    if (r === 'admin') return viewAdmin();
+    if (r === 'add') return viewNew();
     if (r === 'label') return viewLabel();
-    if (r === 'add') return viewAdd();
-    viewHome(); updateBadge();
+    if (r === 'recent') return viewRecent();
+    viewHome();
   }).catch(function (e) {
     if (e.needPin) return viewPin(store('un_pin') ? 'PIN이 바뀌었어요. 새 PIN을 입력해 주세요.' : '');
     $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>';
@@ -155,26 +152,19 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 $('reload').onclick = function () { S.items = null; route(); toast('최신 내용으로 새로 고쳤어요'); };
-$('admin').onclick = function () { location.hash = '#/admin'; if (location.hash === '#/admin') route(); };
 
 // ---------- 검색 ----------
 function viewHome() {
   $('title').textContent = '유엔 물품관리';
   var sites = ['전체'].concat(S.meta.sites.map(function (s) { return s.name; }));
   $('view').innerHTML =
+    '<div class="two" style="margin-bottom:12px"><a class="btn sub" href="#/label" style="text-align:center;text-decoration:none">🏷 라벨 파일 받기</a>' +
+    '<a class="btn sub" href="#/recent" style="text-align:center;text-decoration:none">🕘 최근 기록</a></div>' +
     '<input id="q" type="search" placeholder="품명, 자산번호, 사용자, 모델명 검색" value="' + esc(S.q) + '">' +
     '<div class="chips">' + sites.map(function (s) { return '<button class="chip' + (s === S.site ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') + '</div>' +
     '<label style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" id="old" style="width:auto"' + (S.hideOld ? ' checked' : '') + '> 폐기 물품 숨기기</label>' +
-    '<div id="count" class="hint"></div><div class="card" id="list" style="margin-top:8px"></div>' +
-    '<div class="foot"><a href="#/label">🏷 라벨 파일 받기</a> &nbsp;·&nbsp; ' + (store('un_apin') ? '<a href="#/add">➕ 물품 등록</a> &nbsp;·&nbsp; ' : '') +
-    '<a href="#" id="alog">' + (store('un_apin') ? '관리자 로그아웃' : '관리자 로그인') + '</a></div>';
+    '<div id="count" class="hint"></div><div class="card" id="list" style="margin-top:8px"></div>';
 
-  $('alog').onclick = function (e) {
-    e.preventDefault();
-    if (!store('un_apin')) return viewAdminPin();
-    if (!confirm('이 기기에서 관리자 로그아웃할까요?')) return;
-    store('un_apin', ''); updateBadge(); viewHome(); toast('관리자 로그아웃했어요');
-  };
   $('q').oninput = function () { S.q = this.value; renderList(); };
   $('old').onchange = function () { S.hideOld = this.checked; renderList(); };
   document.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.site = b.dataset.s; viewHome(); }; });
@@ -201,7 +191,6 @@ function findItem(key) {
   key = String(key).toUpperCase();
   return S.items.filter(function (x) { return String(x.code).toUpperCase() === key || x.asset.toUpperCase() === key; })[0];
 }
-var LABEL = { '이동': '🚚 이동', '고장': '🔧 고장', '사용자 변경': '👤 사용자 변경', '없음': '❓ 없음' };
 function viewItem(key) {
   var it = findItem(key);
   if (!it) { $('view').innerHTML = '<div class="card"><div class="head"><div class="t">물품을 찾을 수 없어요</div></div><div class="pad">코드: ' + esc(key) + '<br><br>라벨을 다시 찍어 보거나 관리자에게 문의해 주세요.</div></div>'; return; }
@@ -210,22 +199,19 @@ function viewItem(key) {
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
-    '<div class="card pad"><b>변경 신청</b><p class="hint">관리자가 승인하면 대장에 반영돼요.</p><div class="grid" style="margin-top:10px">' +
-    Object.keys(LABEL).map(function (t) { return '<button class="btn sub" data-t="' + t + '">' + LABEL[t] + '</button>'; }).join('') +
-    '</div><button class="btn sub" data-t="기타" style="margin-top:8px">✏️ 기타 요청</button></div>' +
-    (store('un_apin') ? '<div class="card pad"><b>관리자</b><p class="hint">승인 없이 바로 대장에 반영돼요. (품명 · 프로젝트명은 라벨 보호를 위해 수정 불가)</p>' +
-      '<div class="two" style="margin-top:10px"><button class="btn" id="a_edit">✏️ 수정</button><button class="btn no" id="a_del"' + (it.discarded ? ' disabled' : '') + '>' + (it.discarded ? '폐기됨' : '폐기 처리') + '</button></div></div>' : '') +
-    '<div class="card"><div class="pad" style="padding-bottom:8px"><b>이력</b></div><div id="hist" class="hist"><div class="muted">불러오는 중…</div></div></div>';
-  document.querySelectorAll('[data-t]').forEach(function (b) { b.onclick = function () { openRequest(it, b.dataset.t); }; });
-  if ($('a_edit')) { $('a_edit').onclick = function () { openEdit(it, key); }; $('a_del').onclick = function () { discardItem(it, key); }; }
+    '<div class="card pad"><b>잘못 입력했나요?</b><p class="hint">누구나 바로 고칠 수 있어요. 품명 · 현장(프로젝트명)은 라벨 보호를 위해 고칠 수 없어요. 잘못 골랐으면 등록 취소 후 다시 등록해 주세요.</p>' +
+      '<div class="two" style="margin-top:10px"><button class="btn" id="a_edit">✏️ 수정</button><button class="btn no" id="a_del"' + (it.discarded ? ' disabled' : '') + '>' + (it.discarded ? '폐기 · 취소됨' : '🗑 등록 취소') + '</button></div></div>' +
+    '<div class="card"><div class="pad" style="padding-bottom:8px"><b>기록</b></div><div id="hist" class="hist"><div class="muted">불러오는 중…</div></div></div>';
+  $('a_edit').onclick = function () { openEdit(it, key); };
+  $('a_del').onclick = function () { openCancel(it, key); };
   loadHistory(it);
 }
-var HIST_ICON = { '이동': '🚚', '고장': '🔧', '사용자 변경': '👤', '없음': '❓', '기타': '✏️', '새 물품': '➕', '관리자 등록': '➕', '관리자 수정': '🛠', '엑셀 반영': '📤' };
+var HIST_ICON = { '등록': '➕', '수정': '✏️', '등록 취소': '🗑', '이동': '🚚', '고장': '🔧', '사용자 변경': '👤', '없음': '❓', '기타': '✏️', '새 물품': '➕', '관리자 등록': '➕', '관리자 수정': '✏️', '엑셀 반영': '📤' };
 function loadHistory(it) {
   api({ api: 'history', asset: it.asset }).then(function (d) {
     if (!$('hist')) return;
     $('hist').innerHTML = d.items.length ? d.items.map(function (h) {
-      var st = h.status === '반영완료' ? '' : ' · <b>' + esc(h.status) + '</b>';
+      var st = (h.status === '반영완료' || h.status === '승인') ? '' : ' · <b>' + esc(h.status) + '</b>';
       return '<div class="h"><div class="d">' + esc(h.date) + ' · ' + esc(h.who) + st + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) +
         (h.result ? ' — ' + esc(h.result) : '') + (h.memo ? '<div class="d" style="margin-top:2px">' + esc(h.memo) + '</div>' : '') + '</div>';
     }).join('') : '<div class="muted" style="padding:14px">기록이 없어요</div>';
@@ -240,82 +226,88 @@ function openEdit(it, key) {
     f('e_detail', '상세위치', it.detail, '예) 탕비실 A2') + f('e_user', '사용자', it.user) +
     '<label>비고</label><textarea id="e_note">' + esc(it.note || '') + '</textarea>' +
     '<div class="two"><div>' + f('e_vendor', '렌탈업체', it.vendor) + '</div><div>' + f('e_rental', '렌탈기간', it.rental) + '</div></div>' +
+    '<label>고친 사람 이름</label><input id="e_who" placeholder="이름 (기록에 남아요)">' +
     '<div id="e_err" class="err"></div><button class="btn" id="e_ok" style="margin-top:14px">저장</button><button class="btn sub" id="e_no" style="margin-top:8px">취소</button>');
   $('e_no').onclick = closeSheet;
   $('e_ok').onclick = function () {
-    var p = { api: 'adminedit', sheet: it.sheet, row: it.row, asset: it.asset, model: $('e_model').value.trim(), spec: $('e_spec').value.trim(),
+    var p = { api: 'edit', who: $('e_who').value.trim(), sheet: it.sheet, row: it.row, asset: it.asset, model: $('e_model').value.trim(), spec: $('e_spec').value.trim(),
       loc: $('e_loc').value, detail: $('e_detail').value.trim(), user: $('e_user').value.trim(), note: $('e_note').value.trim(),
       vendor: $('e_vendor').value.trim(), rental: $('e_rental').value.trim() };
+    if (!p.who) { $('e_err').textContent = '고친 사람 이름을 적어 주세요.'; return; }
     var b = $('e_ok'); b.disabled = true; b.textContent = '저장 중…';
-    aapi(p).then(function (d) {
+    api(p).then(function (d) {
       ['model', 'spec', 'loc', 'detail', 'user', 'note', 'vendor', 'rental'].forEach(function (k) { it[k] = p[k]; });
       it.discarded = /폐기/.test(it.note || '');
       closeSheet(); viewItem(key); toast(d.changed ? '저장했어요: ' + d.result : '바뀐 내용이 없어요');
-    }).catch(function (e) { b.disabled = false; b.textContent = '저장'; $('e_err').textContent = e.message; if (e.needAdmin) store('un_apin', ''); });
+    }).catch(function (e) { b.disabled = false; b.textContent = '저장'; $('e_err').textContent = e.message; });
   };
 }
-function discardItem(it, key) {
-  if (!confirm(it.asset + ' 을(를) 폐기 처리할까요?\n줄은 그대로 두고 비고에 "폐기"가 남아요.')) return;
-  aapi({ api: 'adminedit', sheet: it.sheet, row: it.row, asset: it.asset, discard: '1' }).then(function () {
-    it.note = (it.note ? it.note + ' / ' : '') + '폐기'; it.discarded = true; viewItem(key); toast('폐기 처리했어요');
-  }).catch(function (e) { toast(e.message); });
-}
-function openRequest(it, type) {
-  var sites = S.meta.sites.map(function (s) { return s.name; });
-  var extra = '';
-  if (type === '이동') extra = '<label>이동한 현장</label><select id="f_move">' + sites.map(function (s) {
-      return '<option value="' + esc(s) + '"' + (s === it.loc ? ' selected' : '') + '>' + esc(s) + (s === it.loc ? ' (지금 현장 그대로)' : '') + '</option>'; }).join('') + '</select>' +
-    '<label>상세위치</label><input id="f_detail" placeholder="예) 탕비실 정면 하단박스" value="">' +
-    '<p class="hint">지금: ' + esc((it.loc || '-') + (it.detail ? ' · ' + it.detail : '')) + ' · 같은 현장 안에서 자리만 옮겼으면 상세위치만 적어 주세요.</p>';
-  if (type === '사용자 변경') extra = '<label>바뀐 사용자</label><input id="f_user" placeholder="이름">';
-  var ph = { '이동': '(선택) 이동 이유 등', '고장': '어떤 상태인지 적어 주세요. 예) 액정 파손', '사용자 변경': '(선택)', '없음': '언제부터 안 보이는지 등', '기타': '요청 내용을 적어 주세요' }[type];
-  openSheet('<h3>' + esc(type) + ' 신청</h3><div class="hint">' + esc(it.asset) + '</div>' + extra +
-    '<label>내용</label><textarea id="f_memo" placeholder="' + esc(ph) + '"></textarea>' +
-    '<label>신청자 이름</label><input id="f_name" placeholder="이름">' +
-    '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">신청하기</button>' +
-    '<button class="btn sub" id="f_no" style="margin-top:8px">취소</button>');
-  $('f_no').onclick = closeSheet;
-  $('f_ok').onclick = function () {
-    var p = { api: 'request', type: type, asset: it.asset, memo: $('f_memo').value, requester: $('f_name').value };
-    if ($('f_move')) { p.moveTo = $('f_move').value; p.detail = $('f_detail').value.trim(); }
-    if ($('f_user')) p.newUser = $('f_user').value;
-    var err = !p.requester.trim() ? '신청자 이름을 적어 주세요.' :
-      (type === '이동' && !p.moveTo) ? '이동한 현장을 골라 주세요.' :
-      (type === '이동' && p.moveTo === it.loc && !p.detail) ? '같은 현장 안에서 옮겼으면 상세위치를 적어 주세요.' :
-      (type === '사용자 변경' && !p.newUser.trim()) ? '바뀐 사용자를 적어 주세요.' :
-      ((type === '고장' || type === '기타') && !p.memo.trim()) ? '내용을 적어 주세요.' : '';
-    if (err) { $('f_err').textContent = err; return; }
-    var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
-    api(p).then(function () { closeSheet(); toast('신청했어요. 관리자가 승인하면 반영돼요.'); })
-      .catch(function (e) { b.disabled = false; b.textContent = '신청하기'; $('f_err').textContent = e.message; });
+function openCancel(it, key) {
+  openSheet('<h3>🗑 등록 취소</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
+    '<p class="hint">· 방금(24시간 안) 등록한 <b>맨 아래 줄</b>이면 줄이 완전히 지워져요.<br>· 그 외에는 줄은 남기고 비고에 "폐기(등록취소)"를 적어 목록 · 라벨 · 통합검색에서 숨겨요. (아래 물품들의 QR이 틀어지지 않게)</p>' +
+    '<label>이유 (선택)</label><input id="c_memo" placeholder="예) 품명 잘못 선택, 중복 등록">' +
+    '<label>취소하는 사람 이름</label><input id="c_who" placeholder="이름 (기록에 남아요)">' +
+    '<div id="c_err" class="err"></div><button class="btn no" id="c_ok" style="margin-top:14px">등록 취소하기</button><button class="btn sub" id="c_no" style="margin-top:8px">닫기</button>');
+  $('c_no').onclick = closeSheet;
+  $('c_ok').onclick = function () {
+    var who = $('c_who').value.trim(); if (!who) { $('c_err').textContent = '이름을 적어 주세요.'; return; }
+    var b = $('c_ok'); b.disabled = true; b.textContent = '처리 중…';
+    api({ api: 'cancel', who: who, memo: $('c_memo').value, sheet: it.sheet, row: it.row, asset: it.asset }).then(function (d) {
+      S.items = null; closeSheet(); toast(d.deleted ? '등록을 취소하고 줄을 지웠어요' : '등록취소로 숨겼어요'); location.hash = '#/';
+    }).catch(function (e) { b.disabled = false; b.textContent = '등록 취소하기'; $('c_err').textContent = e.message; });
   };
 }
 function openSheet(html) { $('sheetBox').innerHTML = html; $('sheet').classList.add('show'); }
 function closeSheet() { $('sheet').classList.remove('show'); }
 $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
 
-// ---------- 새 물품 신청 ----------
+// ---------- 새 물품 등록 (누구나, 바로 반영) ----------
 function opts(arr) { return '<option value="">선택</option>' + arr.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join(''); }
 function viewNew() {
-  $('title').textContent = '새 물품 등록 신청';
-  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">대장에 없는 물품을 신청해 주세요. 관리자가 승인하면 등록되고 자산번호가 생겨요.</p>' +
-    '<label>현장</label><select id="f_site">' + opts(S.meta.sites.map(function (s) { return s.name; })) + '</select>' +
-    '<label>품명</label><select id="f_pn">' + opts(S.meta.names) + '</select>' +
-    '<p class="hint">찾는 품명이 없으면 비슷한 품명을 고르고 "내용"에 실제 이름을 적어 주세요.</p>' +
-    '<label>모델명</label><input id="f_model"><label>규격사양</label><input id="f_spec">' +
-    '<label>수량</label><input id="f_qty" type="number" min="1" max="99" value="1">' +
-    '<label>사용자</label><input id="f_user"><label>상세위치</label><input id="f_detail" placeholder="예) 탕비실 정면 하단박스"><label>내용</label><textarea id="f_memo" placeholder="(선택)"></textarea>' +
-    '<label>신청자 이름</label><input id="f_name" placeholder="이름">' +
-    '<div id="f_err" class="err"></div><button class="btn" id="f_ok" style="margin-top:14px">등록 신청하기</button></div>';
-  $('f_ok').onclick = function () {
-    var p = { api: 'newitem', site: $('f_site').value, name: $('f_pn').value, model: $('f_model').value, spec: $('f_spec').value,
-      qty: $('f_qty').value, user: $('f_user').value, detail: $('f_detail').value, memo: $('f_memo').value, requester: $('f_name').value };
-    var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.requester.trim() ? '신청자 이름을 적어 주세요.' : '';
-    if (err) { $('f_err').textContent = err; return; }
-    var b = $('f_ok'); b.disabled = true; b.textContent = '보내는 중…';
-    api(p).then(function () { toast('신청했어요. 관리자가 승인하면 등록돼요.'); viewNew(); })
-      .catch(function (e) { b.disabled = false; b.textContent = '등록 신청하기'; $('f_err').textContent = e.message; });
+  $('title').textContent = '새 물품 등록';
+  var sites = S.meta.sites.map(function (s) { return s.name; });
+  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">입력하면 바로 대장 맨 아래에 들어가요. 수량만큼 줄이 나뉘고 자산번호 · QR이 자동으로 생겨요. 잘못 넣었으면 물품 화면에서 수정하거나 등록 취소할 수 있어요.</p>' +
+    '<label>현장 (구매한 곳 · 출처)</label><select id="d_site">' + opts(sites) + '</select>' +
+    '<label>품명</label><select id="d_pn">' + opts(S.meta.names) + '</select>' +
+    '<p class="hint">찾는 품명이 없으면 관리자에게 목록 추가를 부탁해 주세요.</p>' +
+    '<div class="two"><div><label>모델명</label><input id="d_model"></div><div><label>규격사양</label><input id="d_spec"></div></div>' +
+    '<div class="two"><div><label>수량</label><input id="d_qty" type="number" min="1" max="99" value="1"></div><div><label>현재위치</label><select id="d_loc"><option value="">현장과 같게</option>' + siteOpts('') + '</select></div></div>' +
+    '<div class="two"><div><label>상세위치</label><input id="d_detail" placeholder="예) 탕비실 A2"></div><div><label>사용자</label><input id="d_user" placeholder="예) 공용"></div></div>' +
+    '<label>비고</label><input id="d_note">' +
+    '<div class="two"><div><label>렌탈업체</label><input id="d_vendor"></div><div><label>렌탈기간</label><input id="d_rental"></div></div>' +
+    '<label>등록하는 사람 이름</label><input id="d_who" placeholder="이름 (기록에 남아요)">' +
+    '<div id="d_err" class="err"></div><button class="btn" id="d_ok" style="margin-top:14px">등록하기</button></div><div id="d_done"></div>';
+  $('d_ok').onclick = function () {
+    var p = { api: 'add', site: $('d_site').value, name: $('d_pn').value, model: $('d_model').value, spec: $('d_spec').value, qty: $('d_qty').value,
+      loc: $('d_loc').value, detail: $('d_detail').value, user: $('d_user').value, note: $('d_note').value, vendor: $('d_vendor').value, rental: $('d_rental').value, who: $('d_who').value.trim() };
+    var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.who ? '등록하는 사람 이름을 적어 주세요.' : '';
+    if (err) { $('d_err').textContent = err; return; }
+    var b = $('d_ok'); b.disabled = true; b.textContent = '등록 중…';
+    api(p).then(function (d) {
+      S.items = null; b.disabled = false; b.textContent = '등록하기'; $('d_err').textContent = '';
+      S.labelPreset = { site: p.site, start: d.firstRow };
+      $('d_done').innerHTML = '<div class="card pad"><b>✅ ' + d.assets.length + '개 등록했어요</b><div class="hint">' + d.assets.map(esc).join('<br>') + '</div>' +
+        '<a class="btn sub" href="#/label" style="text-align:center;text-decoration:none;margin-top:10px">🏷 방금 등록한 물품 라벨 파일 받기</a></div>';
+      $('d_done').scrollIntoView({ behavior: 'smooth' });
+      toast(d.assets.length + '개 등록했어요');
+    }).catch(function (e) { b.disabled = false; b.textContent = '등록하기'; $('d_err').textContent = e.message; });
   };
+}
+
+// ---------- 최근 기록 ----------
+function viewRecent() {
+  $('title').textContent = '최근 기록';
+  $('view').innerHTML = '<div class="card hist" id="rec"><div class="muted">불러오는 중…</div></div>';
+  api({ api: 'recent' }).then(function (d) {
+    $('rec').innerHTML = '<div class="pad" style="padding-bottom:8px"><b>최근 50건</b><div class="hint">등록 · 수정 · 등록 취소 등 누가 언제 무엇을 했는지 보여줘요.</div></div>' +
+      (d.items.length ? d.items.map(function (h) {
+        var it = h.asset && S.items.filter(function (x) { return x.asset === h.asset; })[0];
+        var link = h.asset ? (it ? '<a href="#/i/' + encodeURIComponent(it.code || it.asset) + '">' + esc(h.asset) + '</a>' : esc(h.asset)) : esc(h.name || '');
+        var st = (h.status === '반영완료' || h.status === '승인') ? '' : ' · <b>' + esc(h.status) + '</b>';
+        return '<div class="h"><div class="d">' + esc(h.date) + ' · ' + esc(h.who) + st + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) + ' · ' + link +
+          (h.result ? '<div class="d" style="margin-top:2px">' + esc(h.result) + '</div>' : '') + '</div>';
+      }).join('') : '<div class="muted" style="padding:14px">기록이 없어요</div>');
+  }).catch(function (e) { $('rec').innerHTML = '<div class="pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
 }
 
 // ---------- QR 스캔 ----------
@@ -358,125 +350,6 @@ function viewScan() {
   };
 }
 
-
-// ---------- 관리 (관리자 PIN 필요) ----------
-var TYPE_ICON = { '이동': '🚚', '고장': '🔧', '사용자 변경': '👤', '없음': '❓', '기타': '✏️', '새 물품': '➕' };
-function aapi(p) { p.apin = store('un_apin'); return api(p); }
-function updateBadge() {
-  $('admin').style.display = store('un_apin') ? 'block' : 'none';
-  if (!store('un_apin')) return;
-  aapi({ api: 'pending' }).then(function (d) {
-    var b = $('badge'); b.textContent = d.items.length; b.style.display = d.items.length ? 'block' : 'none';
-  }).catch(function () {});
-}
-function viewAdminPin(msg) {
-  $('title').textContent = '관리자 로그인';
-  $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:40px">🔐</div>' +
-    '<b>관리자 로그인</b><p class="hint">관리자 PIN을 입력하면 이 기기에서 요청 알림(🔔)과 승인 기능이 켜져요. 다시 묻지 않아요.</p>' +
-    '<input id="apin" type="password" inputmode="numeric" autocomplete="off" style="text-align:center;font-size:22px;letter-spacing:6px;margin-top:12px">' +
-    '<div id="a_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="a_ok" style="margin-top:12px">확인</button></div>';
-  $('apin').focus();
-  var go = function () {
-    var v = $('apin').value.trim(); if (!v) return;
-    $('a_ok').disabled = true;
-    api({ api: 'adminauth', apin: v }).then(function () { store('un_apin', v); toast('관리자로 로그인했어요. 위쪽 🔔에서 요청을 확인하세요.'); location.hash = '#/admin'; route(); })
-      .catch(function (e) { $('a_ok').disabled = false; $('a_err').textContent = e.message; });
-  };
-  $('a_ok').onclick = go;
-  $('apin').onkeydown = function (e) { if (e.key === 'Enter') go(); };
-}
-function viewAdmin() {
-  if (!store('un_apin')) return viewAdminPin();
-  $('title').textContent = '알림';
-  $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
-  aapi({ api: 'pending' }).then(function (d) {
-    var list = d.items.slice().reverse();   // 최근 요청이 위로
-    $('badge').textContent = list.length; $('badge').style.display = list.length ? 'block' : 'none';
-    $('view').innerHTML = '<a class="btn sub" href="#/add" style="text-align:center;text-decoration:none;margin-bottom:12px">➕ 물품 직접 등록</a>' +
-      '<div class="hint" style="margin:0 0 10px">대기 중인 요청 <b id="cnt">' + list.length + '</b>건 · 승인하면 바로 대장에 반영돼요.</div>' +
-      (list.length ? list.map(rqCard).join('') : '<div class="card"><div class="muted">대기 중인 요청이 없어요 👍</div></div>') +
-'';
-    list.forEach(function (x) {
-      var el = $('rq' + x.row);
-      el.querySelector('.ok').onclick = function () { decide(x, true, '', el); };
-      el.querySelector('.no').onclick = function () { askReject(x, el); };
-    });
-  }).catch(function (e) {
-    if (e.needAdmin) { store('un_apin', ''); return viewAdminPin('관리자 PIN이 바뀌었어요. 다시 입력해 주세요.'); }
-    if (e.needPin) return viewPin('PIN이 바뀌었어요. 새 PIN을 입력해 주세요.');
-    $('view').innerHTML = '<div class="card pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>';
-  });
-}
-function rqCard(x) {
-  var lines = [];
-  if (x.type === '새 물품') {
-    lines.push('📍 ' + x.site + (x.detail ? ' · ' + x.detail : '') + ' · ' + x.name + (x.qty ? ' × ' + x.qty : ''));
-    if (x.model || x.spec) lines.push([x.model, x.spec].filter(Boolean).join(' · '));
-    if (x.newUser) lines.push('👤 사용자: ' + x.newUser);
-  } else {
-    lines.push('<a href="#/i/' + encodeURIComponent(x.asset) + '">' + esc(x.asset) + '</a>' + (x.name ? ' · ' + esc(x.name) : ''));
-    if (x.type === '이동') lines.push('🚚 ' + esc((x.site || '-') + (x.oldDetail ? ' · ' + x.oldDetail : '')) + ' → <b>' + esc(x.moveTo + (x.detail ? ' · ' + x.detail : '')) + '</b>');
-    if (x.type === '사용자 변경') lines.push('👤 새 사용자: <b>' + esc(x.newUser) + '</b>');
-  }
-  return '<div class="card pad rq" id="rq' + x.row + '"><div class="top"><span class="ty">' + (TYPE_ICON[x.type] || '') + ' ' + esc(x.type) + '</span>' +
-    '<span class="dt">' + esc(x.date) + '</span></div>' +
-    lines.map(function (l, i) { return '<div class="ln">' + (x.type === '새 물품' ? esc(l) : l) + '</div>'; }).join('') +
-    '<div class="ln" style="color:var(--sub);font-size:13px">신청: ' + esc(x.requester) + '</div>' +
-    (x.memo ? '<div class="memo">' + esc(x.memo) + '</div>' : '') +
-    '<div class="act"><button class="btn ok">✅ 승인</button><button class="btn no">반려</button></div></div>';
-}
-function askReject(x, el) {
-  openSheet('<h3>반려</h3><div class="hint">' + esc(x.type + ' · ' + (x.asset || x.name)) + '</div>' +
-    '<label>반려 사유 (선택)</label><textarea id="r_why" placeholder="비워 둬도 돼요"></textarea>' +
-    '<button class="btn no" id="r_ok" style="margin-top:14px">반려하기</button><button class="btn sub" id="r_no" style="margin-top:8px">취소</button>');
-  $('r_no').onclick = closeSheet;
-  $('r_ok').onclick = function () { closeSheet(); decide(x, false, $('r_why').value, el); };
-}
-function decide(x, ok, reason, el) {
-  var bs = el.querySelectorAll('button'); bs.forEach(function (b) { b.disabled = true; });
-  bs[0].textContent = ok ? '처리 중…' : bs[0].textContent;
-  aapi({ api: 'decide', row: x.row, date: x.date, type: x.type, ok: ok ? '1' : '0', reason: reason }).then(function (d) {
-    el.remove(); S.items = null;
-    var c = $('cnt'), n = Math.max(0, parseInt(c.textContent, 10) - 1); c.textContent = n;
-    $('badge').textContent = n; $('badge').style.display = n ? 'block' : 'none';
-    toast(d.status === '반려' ? '반려했어요' : d.status === '승인' ? d.result : '반영했어요: ' + d.result);
-  }).catch(function (e) {
-    bs.forEach(function (b) { b.disabled = false; }); bs[0].textContent = '✅ 승인';
-    if (e.needAdmin) { store('un_apin', ''); return viewAdminPin('관리자 PIN이 바뀌었어요. 다시 입력해 주세요.'); }
-    toast(e.message);
-  });
-}
-
-// ---------- 관리자: 물품 직접 등록 ----------
-function viewAdd() {
-  if (!store('un_apin')) return viewAdminPin();
-  $('title').textContent = '물품 직접 등록';
-  var sites = S.meta.sites.map(function (s) { return s.name; });
-  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">관리자 등록이라 승인 없이 바로 대장 맨 아래에 들어가요. 수량만큼 줄이 나뉘고 자산번호 · QR이 자동으로 생겨요.</p>' +
-    '<label>현장 (출처 · 등록할 시트)</label><select id="d_site">' + opts(sites) + '</select>' +
-    '<label>품명</label><select id="d_pn">' + opts(S.meta.names) + '</select>' +
-    '<p class="hint">품명이 없으면 시트의 목록 탭 D열에 먼저 추가해 주세요.</p>' +
-    '<div class="two"><div><label>모델명</label><input id="d_model"></div><div><label>규격사양</label><input id="d_spec"></div></div>' +
-    '<div class="two"><div><label>수량</label><input id="d_qty" type="number" min="1" max="99" value="1"></div><div><label>현재위치</label><select id="d_loc"><option value="">현장과 같게</option>' + siteOpts('') + '</select></div></div>' +
-    '<div class="two"><div><label>상세위치</label><input id="d_detail" placeholder="예) 탕비실 A2"></div><div><label>사용자</label><input id="d_user" placeholder="예) 공용"></div></div>' +
-    '<label>비고</label><input id="d_note">' +
-    '<div class="two"><div><label>렌탈업체</label><input id="d_vendor"></div><div><label>렌탈기간</label><input id="d_rental"></div></div>' +
-    '<div id="d_err" class="err"></div><button class="btn" id="d_ok" style="margin-top:14px">바로 등록하기</button></div><div id="d_done"></div>';
-  $('d_ok').onclick = function () {
-    var p = { api: 'adminadd', site: $('d_site').value, name: $('d_pn').value, model: $('d_model').value, spec: $('d_spec').value, qty: $('d_qty').value,
-      loc: $('d_loc').value, detail: $('d_detail').value, user: $('d_user').value, note: $('d_note').value, vendor: $('d_vendor').value, rental: $('d_rental').value };
-    var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : '';
-    if (err) { $('d_err').textContent = err; return; }
-    var b = $('d_ok'); b.disabled = true; b.textContent = '등록 중…';
-    aapi(p).then(function (d) {
-      S.items = null; b.disabled = false; b.textContent = '바로 등록하기'; $('d_err').textContent = '';
-      S.labelPreset = { site: p.site, start: d.firstRow };
-      $('d_done').innerHTML = '<div class="card pad"><b>✅ ' + d.assets.length + '개 등록했어요</b><div class="hint">' + d.assets.map(esc).join('<br>') + '</div>' +
-        '<a class="btn sub" href="#/label" style="text-align:center;text-decoration:none;margin-top:10px">🏷 방금 등록한 물품 라벨 파일 받기</a></div>';
-      toast(d.assets.length + '개 등록했어요');
-    }).catch(function (e) { b.disabled = false; b.textContent = '바로 등록하기'; $('d_err').textContent = e.message; if (e.needAdmin) { store('un_apin', ''); viewAdminPin('관리자 PIN이 바뀌었어요.'); } });
-  };
-}
 
 // ---------- 라벨 파일 받기 (P-touch용 엑셀) ----------
 function viewLabel() {
