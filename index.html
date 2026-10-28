@@ -218,7 +218,7 @@ function loadHistory(it) {
   }).catch(function () { if ($('hist')) $('hist').innerHTML = '<div class="muted" style="padding:14px">이력을 불러오지 못했어요</div>'; });
 }
 function siteOpts(sel) { return S.meta.sites.map(function (s) { return '<option' + (s.name === sel ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join(''); }
-function openEdit(it, key) {
+function openEdit(it, key, done) {
   var f = function (id, label, v, ph) { return '<label>' + label + '</label><input id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(ph || '') + '">'; };
   openSheet('<h3>✏️ 물품 수정</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
     f('e_model', '모델명', it.model) + f('e_spec', '규격사양', it.spec) +
@@ -238,11 +238,11 @@ function openEdit(it, key) {
     api(p).then(function (d) {
       ['model', 'spec', 'loc', 'detail', 'user', 'note', 'vendor', 'rental'].forEach(function (k) { it[k] = p[k]; });
       it.discarded = /폐기/.test(it.note || '');
-      closeSheet(); viewItem(key); toast(d.changed ? '저장했어요: ' + d.result : '바뀐 내용이 없어요');
+      closeSheet(); (done || function () { viewItem(key); })(); toast(d.changed ? '저장했어요: ' + d.result : '바뀐 내용이 없어요');
     }).catch(function (e) { b.disabled = false; b.textContent = '저장'; $('e_err').textContent = e.message; });
   };
 }
-function openCancel(it, key) {
+function openCancel(it, key, done) {
   openSheet('<h3>🗑 등록 취소</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
     '<p class="hint">· 방금(24시간 안) 등록한 <b>맨 아래 줄</b>이면 줄이 완전히 지워져요.<br>· 그 외에는 줄은 남기고 비고에 "폐기(등록취소)"를 적어 목록 · 라벨 · 통합검색에서 숨겨요. (아래 물품들의 QR이 틀어지지 않게)</p>' +
     '<label>이유 (선택)</label><input id="c_memo" placeholder="예) 품명 잘못 선택, 중복 등록">' +
@@ -253,7 +253,8 @@ function openCancel(it, key) {
     var who = $('c_who').value.trim(); if (!who) { $('c_err').textContent = '이름을 적어 주세요.'; return; }
     var b = $('c_ok'); b.disabled = true; b.textContent = '처리 중…';
     api({ api: 'cancel', who: who, memo: $('c_memo').value, sheet: it.sheet, row: it.row, asset: it.asset }).then(function (d) {
-      S.items = null; closeSheet(); toast(d.deleted ? '등록을 취소하고 줄을 지웠어요' : '등록취소로 숨겼어요'); location.hash = '#/';
+      S.items = null; closeSheet(); toast(d.deleted ? '등록을 취소하고 줄을 지웠어요' : '등록취소로 숨겼어요');
+      if (done) done(); else location.hash = '#/';
     }).catch(function (e) { b.disabled = false; b.textContent = '등록 취소하기'; $('c_err').textContent = e.message; });
   };
 }
@@ -304,9 +305,15 @@ function viewRecent() {
         var it = h.asset && S.items.filter(function (x) { return x.asset === h.asset; })[0];
         var link = h.asset ? (it ? '<a href="#/i/' + encodeURIComponent(it.code || it.asset) + '">' + esc(h.asset) + '</a>' : esc(h.asset)) : esc(h.name || '');
         var st = (h.status === '반영완료' || h.status === '승인') ? '' : ' · <b>' + esc(h.status) + '</b>';
+        var btns = it && !it.discarded ? '<div class="two" style="margin-top:8px"><button class="btn sub" data-e="' + esc(it.asset) + '" style="padding:8px">✏️ 수정</button>' +
+          '<button class="btn no" data-c="' + esc(it.asset) + '" style="padding:8px">🗑 등록 취소</button></div>' : '';
         return '<div class="h"><div class="d">' + esc(h.date) + ' · ' + esc(h.who) + st + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) + ' · ' + link +
-          (h.result ? '<div class="d" style="margin-top:2px">' + esc(h.result) + '</div>' : '') + '</div>';
+          (h.result ? '<div class="d" style="margin-top:2px">' + esc(h.result) + '</div>' : '') + btns + '</div>';
       }).join('') : '<div class="muted" style="padding:14px">기록이 없어요</div>');
+    var byAsset = function (a) { return S.items.filter(function (x) { return x.asset === a; })[0]; };
+    var again = function () { location.hash = '#/recent'; route(); };
+    document.querySelectorAll('[data-e]').forEach(function (b) { b.onclick = function () { var it = byAsset(b.dataset.e); openEdit(it, it.code || it.asset, again); }; });
+    document.querySelectorAll('[data-c]').forEach(function (b) { b.onclick = function () { var it = byAsset(b.dataset.c); openCancel(it, it.code || it.asset, again); }; });
   }).catch(function (e) { $('rec').innerHTML = '<div class="pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
 }
 
