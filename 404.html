@@ -66,11 +66,6 @@
   .rq .act{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:12px}
   .btn.ok{background:#2e7d32}
   .btn.no{background:#fde2e2;color:var(--red)}
-  .sum{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
-  .sum .c{flex:none;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.1);padding:8px 12px;min-width:72px;cursor:pointer;text-align:center}
-  .sum .c b{display:block;font-size:18px;color:var(--blue)}
-  .sum .c span{font-size:12px;color:var(--sub);white-space:nowrap}
-  .sum .c.warn b{color:var(--red)}
   .hist .h{padding:10px 16px;border-top:1px solid var(--line);font-size:14px;word-break:break-all}
   .hist .d{font-size:12px;color:var(--sub);margin-bottom:2px}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -166,17 +161,14 @@ $('admin').onclick = function () { location.hash = '#/admin'; if (location.hash 
 function viewHome() {
   $('title').textContent = '유엔 물품관리';
   var sites = ['전체'].concat(S.meta.sites.map(function (s) { return s.name; }));
-  $('view').innerHTML = summaryHtml() +
+  $('view').innerHTML =
     '<input id="q" type="search" placeholder="품명, 자산번호, 사용자, 모델명 검색" value="' + esc(S.q) + '">' +
     '<div class="chips">' + sites.map(function (s) { return '<button class="chip' + (s === S.site ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') + '</div>' +
     '<label style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" id="old" style="width:auto"' + (S.hideOld ? ' checked' : '') + '> 폐기 물품 숨기기</label>' +
     '<div id="count" class="hint"></div><div class="card" id="list" style="margin-top:8px"></div>' +
     '<div class="foot"><a href="#/label">🏷 라벨 파일 받기</a> &nbsp;·&nbsp; ' + (store('un_apin') ? '<a href="#/add">➕ 물품 등록</a> &nbsp;·&nbsp; ' : '') +
     '<a href="#" id="alog">' + (store('un_apin') ? '관리자 로그아웃' : '관리자 로그인') + '</a></div>';
-  document.querySelectorAll('.sum .c').forEach(function (c) { c.onclick = function () {
-    if (c.dataset.go) { location.hash = c.dataset.go; return; }
-    S.site = c.dataset.site || '전체'; S.q = c.dataset.q || ''; viewHome();
-  }; });
+
   $('alog').onclick = function (e) {
     e.preventDefault();
     if (!store('un_apin')) return viewAdminPin();
@@ -453,20 +445,6 @@ function decide(x, ok, reason, el) {
     if (e.needAdmin) { store('un_apin', ''); return viewAdminPin('관리자 PIN이 바뀌었어요. 다시 입력해 주세요.'); }
     toast(e.message);
   });
-}
-
-// ---------- 현황 요약 ----------
-function summaryHtml() {
-  var live = S.items.filter(function (x) { return !x.discarded; });
-  var by = {}; live.forEach(function (x) { by[x.loc] = (by[x.loc] || 0) + 1; });
-  var broken = live.filter(function (x) { return /고장/.test(x.note || ''); }).length;
-  var missing = live.filter(function (x) { return /없음 신고|점검 시 없음/.test(x.note || ''); }).length;
-  var card = function (num, label, attrs, warn) { return '<div class="c' + (warn && num ? ' warn' : '') + '" ' + attrs + '><b>' + num + '</b><span>' + esc(label) + '</span></div>'; };
-  var h = card(live.length, '전체', 'data-site="전체"');
-  S.meta.sites.forEach(function (s) { h += card(by[s.name] || 0, s.name, 'data-site="' + esc(s.name) + '"'); });
-  h += card(broken, '고장 기록', 'data-q="고장"', true) + card(missing, '없음 신고', 'data-q="없음"', true);
-  if (store('un_apin')) h += card($('badge').textContent || 0, '대기 요청', 'data-go="#/admin"', true);
-  return '<div class="sum">' + h + '</div>';
 }
 
 // ---------- 관리자: 물품 직접 등록 ----------
