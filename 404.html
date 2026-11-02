@@ -483,10 +483,11 @@ function viewLabel() {
   $('title').textContent = '라벨 파일 받기';
   var pre = S.labelPreset || {}; S.labelPreset = null;
   var sites = S.meta.sites.map(function (s) { return s.name; });
-  var sel = {}, q = '';
-  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">현장을 고르고 라벨을 뽑을 물품만 체크해서 P-touch용 엑셀을 받아요. (시트 순서대로 · 새로 넣은 물품은 맨 아래 · 폐기 물품 제외)</p>' +
+  var sel = {}, q = '', hidePrinted = true;
+  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">현장을 고르고 라벨을 뽑을 물품만 체크해서 P-touch용 엑셀을 받아요. (시트 순서대로 · 새로 넣은 물품은 맨 아래 · 폐기 물품 제외 · 받은 물품은 \'출력함\'으로 표시돼요)</p>' +
     '<label>현장 (출처 시트)</label><select id="l_site">' + sites.map(function (s) { return '<option' + (s === pre.site ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
     '<input id="l_q" type="search" placeholder="품명 · 자산번호 · 모델명으로 거르기" style="margin-top:10px">' +
+    '<label style="display:flex;gap:6px;align-items:center;margin:8px 0 0"><input type="checkbox" id="l_hide" style="width:auto" checked> 이미 출력한 물품 숨기기</label>' +
     '<div class="row" style="margin-top:8px"><b id="l_info" style="font-size:14px"></b><span><button class="btn sub mini" id="l_all">전체 선택</button> <button class="btn sub mini" id="l_none">전체 해제</button></span></div>' +
     '</div><div class="card" id="l_list" style="max-height:55vh;overflow:auto"></div>' +
     '<div class="card pad"><button class="btn" id="l_ok">📥 엑셀 받기</button>' +
@@ -498,7 +499,7 @@ function viewLabel() {
   };
   var shown = function () {
     var k = q.trim().toLowerCase();
-    return all().filter(function (x) { return !k || [x.asset, x.name, x.model, x.detail, x.user].join(' ').toLowerCase().indexOf(k) >= 0; });
+    return all().filter(function (x) { return (!hidePrinted || !x.printed || sel[x.code]) && (!k || [x.asset, x.name, x.model, x.detail, x.user].join(' ').toLowerCase().indexOf(k) >= 0); });
   };
   var count = function () {
     var n = all().filter(function (x) { return sel[x.code]; }).length;
@@ -509,14 +510,15 @@ function viewLabel() {
     var l = shown();
     $('l_list').innerHTML = l.length ? l.map(function (x) {
       return '<label class="ck' + (sel[x.code] ? ' on' : '') + '"><input type="checkbox" data-k="' + esc(x.code) + '"' + (sel[x.code] ? ' checked' : '') + '>' +
-        '<div><b>' + esc(x.asset) + '</b><div class="s">' + esc([x.model, x.detail, x.user].filter(Boolean).join(' · ') || '-') + ' · ' + x.row + '행</div></div></label>';
-    }).join('') : '<div class="muted">해당하는 물품이 없어요</div>';
+        '<div><b>' + esc(x.asset) + '</b><div class="s">' + esc([x.model, x.detail, x.user].filter(Boolean).join(' · ') || '-') + ' · ' + x.row + '행' + (x.printed ? ' · <span style="color:#2e7d32">🏷 ' + esc(x.printed) + ' 출력</span>' : '') + '</div></div></label>';
+    }).join('') : '<div class="muted">' + (hidePrinted && all().length ? '출력 안 한 물품이 없어요 (위 \'이미 출력한 물품 숨기기\'를 끄면 다 보여요)' : '해당하는 물품이 없어요') + '</div>';
     document.querySelectorAll('#l_list input').forEach(function (c) { c.onchange = function () { if (c.checked) sel[c.dataset.k] = 1; else delete sel[c.dataset.k]; c.parentNode.classList.toggle('on', c.checked); count(); }; });
     count();
   };
   if (pre.site && pre.start) all().forEach(function (x) { if (x.row >= pre.start) sel[x.code] = 1; });   // 방금 등록한 물품은 미리 체크
   $('l_site').onchange = function () { sel = {}; render(); };
   $('l_q').oninput = function () { q = this.value; render(); };
+  $('l_hide').onchange = function () { hidePrinted = this.checked; render(); };
   $('l_all').onclick = function () { shown().forEach(function (x) { sel[x.code] = 1; }); render(); };
   $('l_none').onclick = function () { shown().forEach(function (x) { delete sel[x.code]; }); render(); };
   render();
@@ -524,7 +526,10 @@ function viewLabel() {
     var l = all().filter(function (x) { return sel[x.code]; }).sort(function (a, b) { return a.row - b.row; }), site = $('l_site').value;
     var rows = l.map(function (x) { return [x.asset, 'HTTPS://UN-ASSET.GITHUB.IO/' + x.code]; });
     downloadXlsx('라벨_' + site + '_' + rows.length + '개_' + ymd() + '.xlsx', [{ name: '라벨출력', rows: rows, widths: [30, 40] }]);
-    toast(rows.length + '개 라벨 파일을 받았어요');
+    // 받은 물품은 '출력함'으로 표시 (시트 Q열에 날짜) → 다음에 목록에서 숨겨져요
+    api({ api: 'labeled', codes: l.map(function (x) { return x.code; }).join(',') }).then(function (d) {
+      l.forEach(function (x) { x.printed = d.date; }); sel = {}; render(); toast(rows.length + '개 라벨 파일을 받았어요 (출력함으로 표시)');
+    }).catch(function () { toast(rows.length + '개 라벨 파일을 받았어요 (출력 표시는 실패)'); });
   };
 }
 function ymd() { var d = new Date(); return String(d.getFullYear()).slice(2) + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2); }
