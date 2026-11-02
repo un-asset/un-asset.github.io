@@ -484,7 +484,7 @@ function viewLabel() {
   var pre = S.labelPreset || {}; S.labelPreset = null;
   var sites = S.meta.sites.map(function (s) { return s.name; });
   var sel = {}, q = '';
-  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">현장을 고르고 라벨을 뽑을 물품만 체크해서 P-touch용 엑셀을 받아요. (최근 등록한 물품이 위에 나와요 · 폐기 물품 제외)</p>' +
+  $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">현장을 고르고 라벨을 뽑을 물품만 체크해서 P-touch용 엑셀을 받아요. (시트 순서대로 · 새로 넣은 물품은 맨 아래 · 폐기 물품 제외)</p>' +
     '<label>현장 (출처 시트)</label><select id="l_site">' + sites.map(function (s) { return '<option' + (s === pre.site ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
     '<input id="l_q" type="search" placeholder="품명 · 자산번호 · 모델명으로 거르기" style="margin-top:10px">' +
     '<div class="row" style="margin-top:8px"><b id="l_info" style="font-size:14px"></b><span><button class="btn sub mini" id="l_all">전체 선택</button> <button class="btn sub mini" id="l_none">전체 해제</button></span></div>' +
@@ -492,9 +492,9 @@ function viewLabel() {
     '<div class="card pad"><button class="btn" id="l_ok">📥 엑셀 받기</button>' +
     '<a class="btn sub" href="/label_9mm.lbx" download="label_9mm.lbx" style="text-align:center;text-decoration:none;margin-top:8px">📄 라벨 양식(.lbx) 받기 <span style="font-weight:normal">(처음 한 번)</span></a></div>' +
     '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint" style="line-height:1.7">① 위에서 현장을 고르고 뽑을 물품을 체크 → <b>[📥 엑셀 받기]</b><br>② PC에서 <b>P-touch Editor</b> 실행 → <b>label_9mm.lbx</b> 열기 (없으면 위 [📄 라벨 양식 받기]로 먼저 받기)<br>③ 오른쪽 위 <b>[데이터베이스]</b> 열기 → <b>[찾아보기]</b>로 ①에서 받은 엑셀 선택<br>④ <b>"머리글 행에 필드 이름 포함"</b> 체크 해제<br>⑤ <b>할당 창</b>에서 각 개체에 맞는 데이터베이스 필드를 고른 뒤 <b>[인쇄]</b></p></div>';
-  var all = function () {   // 이 현장 물품, 최근 등록(아래 행) 순
+  var all = function () {   // 이 현장 물품, 시트 행 순서대로
     var site = $('l_site').value;
-    return S.items.filter(function (x) { return x.sheet === site && !x.discarded && x.code; }).sort(function (a, b) { return b.row - a.row; });
+    return S.items.filter(function (x) { return x.sheet === site && !x.discarded && x.code; }).sort(function (a, b) { return a.row - b.row; });
   };
   var shown = function () {
     var k = q.trim().toLowerCase();
