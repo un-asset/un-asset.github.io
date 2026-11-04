@@ -118,7 +118,7 @@ function viewPin(msg) {
   closeSheet(); showMe();
   $('title').textContent = '유엔 물품관리';
   $('view').innerHTML = '<div class="card pad"><b>로그인</b><p class="hint">이 기기에서 한 번만 입력하면 다음부터는 바로 들어와요.</p>' +
-    '<label>이름</label><input id="p_name" maxlength="20" autocomplete="name" value="' + esc(me()) + '" placeholder="예) 김경현">' +
+    '<label>이름</label><input id="p_name" maxlength="20" autocomplete="name" value="' + esc(me()) + '" placeholder="예) 홍길동">' +
     '<label>회사 PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" style="letter-spacing:4px">' +
     '<p class="hint">입력한 이름이 모든 기록(등록 · 수정 · 이동 · 폐기 · 점검)에 남아요. 본인 이름으로 써 주세요.</p>' +
     '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">들어가기</button></div>';
