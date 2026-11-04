@@ -54,6 +54,8 @@
   .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
   header button svg{display:block;width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .btn.no{background:#fde2e2;color:var(--red)}
+  .btn.gray{background:#eee;color:#555;font-weight:normal}
+  #d_rs .chip.on{background:var(--red);border-color:var(--red)}
   .hist .h{padding:10px 16px;border-top:1px solid var(--line);font-size:14px;word-break:break-all}
   .hist .d{font-size:12px;color:var(--sub);margin-bottom:2px}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -210,14 +212,21 @@ function viewItem(key) {
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
-    '<div class="card pad"><b>잘못 입력했나요?</b><p class="hint">누구나 바로 고칠 수 있어요. 품명 · 현장(프로젝트명)은 라벨 보호를 위해 고칠 수 없어요. 잘못 골랐으면 등록 취소 후 다시 등록해 주세요.</p>' +
-      '<div class="two" style="margin-top:10px"><button class="btn" id="a_edit">✏️ 수정</button><button class="btn no" id="a_del"' + (it.discarded ? ' disabled' : '') + '>' + (it.discarded ? '폐기 · 취소됨' : '🗑 등록 취소') + '</button></div></div>' +
+    '<div class="card pad"><b>관리</b>' +
+      (it.discarded ? '<p class="hint">폐기 · 취소된 물품이에요. 되돌리려면 아래 기록에서 [↩ 되돌리기]를 눌러요.</p><div class="two" style="margin-top:10px"><button class="btn sub" id="a_edit">✏️ 수정</button></div>' :
+      '<div class="two" style="margin-top:10px"><button class="btn sub" id="a_edit">✏️ 수정</button><button class="btn" id="a_move">🚚 이동</button></div>' +
+      '<div class="two" style="margin-top:8px"><button class="btn no" id="a_dis">🗑 폐기</button><button class="btn gray" id="a_del">↶ 등록 취소</button></div>' +
+      '<p class="hint">이동: 다른 현장 · 자리로 옮길 때 · 폐기: 고장 · 분실 · 노후<br>등록 취소: 잘못 등록했을 때만 · 품명 · 현장(프로젝트명)은 라벨 보호를 위해 못 바꿔요</p>') + '</div>' +
     '<div class="card"><div class="pad" style="padding-bottom:8px"><b>기록</b></div><div id="hist" class="hist"><div class="muted">불러오는 중…</div></div></div>';
   $('a_edit').onclick = function () { openEdit(it, key); };
-  $('a_del').onclick = function () { openCancel(it, key); };
+  if (!it.discarded) {
+    $('a_del').onclick = function () { openCancel(it, key); };
+    $('a_move').onclick = function () { openMove(it, key); };
+    $('a_dis').onclick = function () { openDiscard(it, key); };
+  }
   loadHistory(it);
 }
-var HIST_ICON = { '등록': '➕', '수정': '✏️', '등록 취소': '🗑', '되돌리기': '↩️', '품명 추가': '🏷', '점검': '✅' };
+var HIST_ICON = { '등록': '➕', '수정': '✏️', '등록 취소': '↶', '폐기': '🗑', '이동': '🚚', '현장 추가': '🏗', '수량 나누기': '🔢', '되돌리기': '↩️', '품명 추가': '🏷', '점검': '✅' };
 function undoBtn(h) { return h.undo ? '<button class="btn sub mini" style="margin-top:6px" data-u="' + h.lr + '" data-ud="' + esc(h.date) + '" data-ua="' + esc(h.asset) + '" data-ut="' + esc(h.type + ' · ' + (h.result || '')) + '">↩ 되돌리기</button>' : ''; }
 function bindUndo(again) {
   document.querySelectorAll('[data-u]').forEach(function (b) { b.onclick = function () {
@@ -284,6 +293,56 @@ function openCancel(it, key, done) {
       S.items = null; closeSheet(); toast(d.deleted ? '등록을 취소하고 줄을 지웠어요' : '등록취소로 숨겼어요');
       if (done) done(); else location.hash = '#/';
     }).catch(function (e) { b.disabled = false; b.textContent = '등록 취소하기'; $('c_err').textContent = e.message; });
+  };
+}
+function dot() { var d = new Date(); return String(d.getFullYear()).slice(2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + ('0' + d.getDate()).slice(-2); }
+function preBox(id) { return '<div id="' + id + '" style="background:#f6f8fb;border:1px dashed #b8c4d8;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:12px"></div>'; }
+function openMove(it, key) {
+  openSheet('<h3>🚚 물품 이동</h3><div class="hint">' + esc(it.asset) + ' · 지금: ' + esc(it.loc || '-') + ' / ' + esc(it.detail || '-') + '</div>' +
+    '<label>어디로 옮기나요?</label><select id="m_loc">' + siteOpts(it.loc) + '</select>' +
+    '<label>상세위치 (선택)</label><input id="m_detail" value="' + esc(it.detail || '') + '" placeholder="예) 현장 사무실 창가">' +
+    '<label>옮기는 사람 이름</label><input id="m_who" placeholder="이름 (기록에 남아요)">' + preBox('m_pre') +
+    '<div id="m_err" class="err"></div><button class="btn" id="m_ok" style="margin-top:14px">이동하기</button><button class="btn sub" id="m_no" style="margin-top:8px">닫기</button>');
+  var pre = function () {
+    var loc = $('m_loc').value, det = $('m_detail').value.trim();
+    var t = loc === it.loc ? loc + ' ' + (it.detail || '-') + '→' + (det || '-') : (it.loc || '-') + '→' + loc;
+    $('m_pre').innerHTML = (loc === it.loc && det === (it.detail || '')) ? '<span style="color:var(--sub)">지금 위치와 같아요</span>' : '비고에 자동으로 적혀요<br><b>' + esc(dot() + ' ' + t + ' 이동') + '</b>';
+  };
+  $('m_loc').onchange = pre; $('m_detail').oninput = pre; pre();
+  $('m_no').onclick = closeSheet;
+  $('m_ok').onclick = function () {
+    var who = $('m_who').value.trim(); if (!who) { $('m_err').textContent = '이름을 적어 주세요.'; return; }
+    var b = $('m_ok'); b.disabled = true; b.textContent = '처리 중…';
+    api({ api: 'move', who: who, sheet: it.sheet, row: it.row, asset: it.asset, loc: $('m_loc').value, detail: $('m_detail').value.trim() }).then(function (d) {
+      S.items = null; closeSheet(); toast('옮겼어요: ' + d.result); loadAll(true).then(function () { viewItem(key); });
+    }).catch(function (e) { b.disabled = false; b.textContent = '이동하기'; $('m_err').textContent = e.message; });
+  };
+}
+function openDiscard(it, key) {
+  var R = ['고장', '분실', '노후', '기타'], sel = '';
+  openSheet('<h3>🗑 물품 폐기</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
+    '<label>사유</label><div class="chips" style="flex-wrap:wrap;padding-top:2px" id="d_rs">' + R.map(function (r) { return '<span class="chip" data-r="' + r + '">' + r + '</span>'; }).join('') + '</div>' +
+    '<label>메모 (선택)</label><input id="d_memo" placeholder="예) 화면 깨짐">' +
+    '<label>폐기하는 사람 이름</label><input id="d_who" placeholder="이름 (기록에 남아요)">' + preBox('d_pre') +
+    '<div id="d_err" class="err"></div><button class="btn no" id="d_ok" style="margin-top:14px">폐기하기</button><button class="btn sub" id="d_no" style="margin-top:8px">닫기</button>');
+  var pre = function () {
+    var m = $('d_memo').value.trim();
+    $('d_pre').innerHTML = sel ? '비고에 자동으로 적혀요<br><b>' + esc(dot() + ' 폐기(' + sel + ')' + (m ? ' ' + m : '')) + '</b><br>목록 · 라벨 · 통합검색에서 빠져요 (줄 · 기록은 남음, 되돌리기 가능)' : '<span style="color:var(--sub)">사유를 골라 주세요</span>';
+  };
+  document.querySelectorAll('#d_rs .chip').forEach(function (c) { c.onclick = function () {
+    sel = c.dataset.r; document.querySelectorAll('#d_rs .chip').forEach(function (x) { x.classList.toggle('on', x === c); }); pre();
+  }; });
+  $('d_memo').oninput = pre; pre();
+  $('d_no').onclick = closeSheet;
+  $('d_ok').onclick = function () {
+    var who = $('d_who').value.trim();
+    if (!sel) { $('d_err').textContent = '사유를 골라 주세요.'; return; }
+    if (!who) { $('d_err').textContent = '이름을 적어 주세요.'; return; }
+    if (!confirm(it.asset + ' 을(를) 폐기할까요?')) return;
+    var b = $('d_ok'); b.disabled = true; b.textContent = '처리 중…';
+    api({ api: 'discard', who: who, reason: sel, memo: $('d_memo').value.trim(), sheet: it.sheet, row: it.row, asset: it.asset }).then(function (d) {
+      S.items = null; closeSheet(); toast('폐기했어요: ' + d.result); loadAll(true).then(function () { viewItem(key); });
+    }).catch(function (e) { b.disabled = false; b.textContent = '폐기하기'; $('d_err').textContent = e.message; });
   };
 }
 function openSheet(html) { $('sheetBox').innerHTML = html; $('sheet').classList.add('show'); }
@@ -361,7 +420,7 @@ function viewRecent() {
         var link = h.asset ? (it ? '<a href="#/i/' + encodeURIComponent(it.code || it.asset) + '">' + esc(h.asset) + '</a>' : esc(h.asset)) : esc(h.name || '');
         var st = (h.status === '반영완료' || h.status === '승인') ? '' : ' · <b>' + esc(h.status) + '</b>';
         var btns = it && !it.discarded ? '<div class="two" style="margin-top:8px"><button class="btn sub" data-e="' + esc(it.asset) + '" style="padding:8px">✏️ 수정</button>' +
-          '<button class="btn no" data-c="' + esc(it.asset) + '" style="padding:8px">🗑 등록 취소</button></div>' : '';
+          '<button class="btn no" data-c="' + esc(it.asset) + '" style="padding:8px">↶ 등록 취소</button></div>' : '';
         return '<div class="h"><div class="d">' + esc(h.date) + ' · ' + esc(h.who) + st + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) + ' · ' + link +
           (h.result ? '<div class="d" style="margin-top:2px">' + esc(h.result) + '</div>' : '') + btns + undoBtn(h) + '</div>';
       }).join('') : '<div class="muted" style="padding:14px">기록이 없어요</div>');
