@@ -131,7 +131,7 @@ function viewPin(msg) {
   $('view').innerHTML = '<div class="card pad"><b>로그인</b><p class="hint">이 기기에서 한 번만 입력하면 다음부터는 바로 들어와요.</p>' +
     '<label>이름</label><input id="p_name" maxlength="20" autocomplete="name" value="' + esc(me()) + '" placeholder="예) 홍길동">' +
     '<label>회사 PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" style="letter-spacing:4px">' +
-    '<p class="hint">입력한 이름이 모든 기록(등록 · 수정 · 이동 · 폐기 · 점검)에 남아요. 본인 이름으로 써 주세요.</p>' +
+    '<p class="hint">입력한 이름이 모든 기록(등록 · 수정 · 이동 · 폐기)에 남아요. 본인 이름으로 써 주세요.</p>' +
     '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">들어가기</button></div>';
   $(me() ? 'pin' : 'p_name').focus();
   var go = function () {
@@ -164,7 +164,7 @@ function logout() { try { localStorage.removeItem('un_pin'); localStorage.remove
 function viewMe() {
   $('title').textContent = '내 정보';
   var mine = S.items.filter(function (x) { return !x.discarded && splitUsers(x.user).indexOf(me()) >= 0; });
-  $('view').innerHTML = '<div class="card pad"><b style="font-size:17px">👤 ' + esc(me()) + '</b><p class="hint">기록(등록 · 수정 · 이동 · 폐기 · 점검)에 이 이름으로 남아요.</p></div>' +
+  $('view').innerHTML = '<div class="card pad"><b style="font-size:17px">👤 ' + esc(me()) + '</b><p class="hint">기록(등록 · 수정 · 이동 · 폐기)에 이 이름으로 남아요.</p></div>' +
     '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내가 사용 중인 물품 ' + mine.length + '개</b><p class="hint">대장의 \'사용자\'가 ' + esc(me()) + '인 물품 (폐기 제외)</p></div>' +
     (mine.length ? mine.map(function (x) { return '<div class="item" data-k="' + esc(x.code || x.asset) + '"><b>' + esc(x.name) + '</b><div class="s">' + esc(x.asset) + ' · ' + esc(x.loc || '-') + (x.detail ? ' / ' + esc(x.detail) : '') + '</div></div>'; }).join('') :
       '<div class="muted" style="padding:14px">사용 중인 물품이 없어요</div>') + '</div>' +
@@ -265,7 +265,7 @@ var HELP = [
     steps: ['아래 메뉴 <b>[➕ 새 물품]</b> → <b>현장</b> 고르기', '<b>품명</b> 고르기 (없으면 맨 아래 <b>[＋ 새 품명 추가]</b>)', '<b>수량</b> 넣기 (3개면 줄이 3개 생겨요)', '<b>[등록하기]</b> → 끝나면 라벨 파일 받기로 이어져요'],
     tips: '10분 안에 같은 물품을 또 넣으면 중복인지 물어봐요.<br>잘못 넣었으면 물품 화면 → <b>[↶ 등록 취소]</b>' },
   { g: '물품 관리', id: 'edit', t: '✏️ 수정', intro: '물품 화면 → [✏️ 수정]. 모델명 · 사용자 · 상세위치 · 비고 등을 고쳐요.',
-    steps: ['고칠 칸 고치기', '<b>[저장]</b>'],
+    steps: ['고칠 칸 고치기 (모델명 · 사용자 · 상세위치 · 비고 등)', '<b>[저장]</b>'],
     tips: '품명 · 현장(프로젝트명)은 라벨 보호를 위해 못 바꿔요. 다른 현장으로 옮길 땐 <b>[🚚 이동]</b>' },
   { g: '물품 관리', id: 'move', t: '🚚 이동', intro: '물품 화면 → [🚚 이동]. 다른 현장이나 자리로 옮길 때 써요.',
     steps: ['<b>옮길 곳</b> 고르기', '<b>상세위치</b> 넣기 (선택)', '비고에 자동으로 적힐 내용 확인', '<b>[이동하기]</b>'],
