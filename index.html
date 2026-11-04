@@ -137,7 +137,9 @@ function viewPin(msg) {
           var sim = names.filter(function (n) { return n.indexOf(name) >= 0 || name.indexOf(n) >= 0; });
           if (sim.length && confirm('대장의 사용자 이름에 "' + name + '"이(가) 없어요.\n"' + sim[0] + '"(으)로 로그인할까요?\n\n취소를 누르면 "' + name + '" 그대로 써요.')) name = sim[0];
         }
-        store('un_who', name); showMe(); toast(name + ' 님, 환영해요'); route();
+        store('un_who', name); showMe(); toast(name + ' 님, 환영해요');
+        if (!S.fromQR) history.replaceState(null, '', location.pathname + '#/');   // QR로 들어온 게 아니면 첫 화면(검색)으로
+        S.fromQR = false; route();
       });
     }).catch(function (e) { $('p_ok').disabled = false; $('p_err').textContent = /PIN|오류/.test(e.message) ? 'PIN이 맞지 않아요.' : e.message; });
   };
@@ -174,7 +176,7 @@ function loadAll(force) {
 // 라벨 QR(/A15)로 들어오면 그 물품 화면으로
 (function () {
   var code = location.pathname.replace(/^\/+|\/+$/g, '');
-  if (code && !/\.html$/i.test(code)) history.replaceState(null, '', '/#/i/' + encodeURIComponent(code.toUpperCase()));
+  if (code && !/\.html$/i.test(code)) { history.replaceState(null, '', '/#/i/' + encodeURIComponent(code.toUpperCase())); S.fromQR = true; }
 })();
 
 function route() {
