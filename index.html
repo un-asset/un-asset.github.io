@@ -54,6 +54,8 @@
   .hint{font-size:13px;color:var(--sub);margin:6px 0 0}
   header button svg{display:block;width:22px;height:22px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .btn.no{background:#fde2e2;color:var(--red)}
+  header button.me{font-size:13px;background:rgba(255,255,255,.18);border-radius:14px;padding:5px 11px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis}
+  .fix{background:#eef3fb;border:1px solid #c9d5ea;border-radius:8px;padding:10px 12px;font-size:15px;color:var(--blue);font-weight:bold}
   .btn.gray{background:#eee;color:#555;font-weight:normal}
   #d_rs .chip.on{background:var(--red);border-color:var(--red)}
   .hist .h{padding:10px 16px;border-top:1px solid var(--line);font-size:14px;word-break:break-all}
@@ -70,7 +72,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="title">유엔 물품관리</h1><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
+<header><h1 id="title">유엔 물품관리</h1><button id="meBtn" class="me" style="display:none"></button><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
 <main id="view"><div class="muted">불러오는 중…</div></main>
 <nav>
   <a href="#/" data-r="home"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>검색</a>
@@ -93,6 +95,7 @@ function toast(t) { var el = $('toast'); el.textContent = t; el.style.display = 
 
 function api(params) {
   if (params.pin === undefined) params.pin = store('un_pin');   // 한 번 입력한 PIN은 이 기기에 기억
+  if (params.who === undefined && me()) params.who = me();   // 기록 이름 = 로그인한 이름 (고정)
   var qs = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
   return fetch(WEBAPP + '?' + qs).then(function (r) { return r.json(); }).then(function (d) {
     if (d.needPin) { var e = new Error('PIN이 필요해요'); e.needPin = true; throw e; }
@@ -100,24 +103,68 @@ function api(params) {
   });
 }
 
-// ---------- PIN 입력 (처음 한 번만) ----------
+// ---------- 로그인: 이름 + 회사 PIN (처음 한 번만) ----------
+function me() { return store('un_who'); }
+function whoBox() { return '<label>처리하는 사람</label><div class="fix">👤 ' + esc(me()) + ' (자동)</div>'; }
+function showMe() { var b = $('meBtn'); if (me() && store('un_pin')) { b.textContent = '👤 ' + me(); b.style.display = ''; } else b.style.display = 'none'; }
+$('meBtn').onclick = function () { location.hash = '#/me'; };
+function splitUsers(u) { return String(u || '').split(/[,\/·]/).map(function (n) { return n.trim(); }).filter(Boolean); }
+function userNames() {   // 대장 J열(사용자)에 있는 이름들
+  var set = {};
+  (S.items || []).forEach(function (x) { splitUsers(x.user).forEach(function (n) { if (n !== '공용') set[n] = 1; }); });
+  return Object.keys(set).sort();
+}
 function viewPin(msg) {
-  closeSheet();
+  closeSheet(); showMe();
   $('title').textContent = '유엔 물품관리';
-  $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:40px">🔒</div>' +
-    '<b>회사 PIN을 입력해 주세요</b><p class="hint">처음 한 번만 입력하면 이 기기에서는 다시 묻지 않아요.</p>' +
-    '<input id="pin" type="password" inputmode="numeric" autocomplete="off" style="text-align:center;font-size:22px;letter-spacing:6px;margin-top:12px">' +
-    '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">확인</button></div>';
-  $('pin').focus();
+  $('view').innerHTML = '<div class="card pad"><b>로그인</b><p class="hint">이 기기에서 한 번만 입력하면 다음부터는 바로 들어와요.</p>' +
+    '<label>이름</label><input id="p_name" maxlength="20" autocomplete="name" value="' + esc(me()) + '" placeholder="예) 김경현">' +
+    '<label>회사 PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" style="letter-spacing:4px">' +
+    '<p class="hint">입력한 이름이 모든 기록(등록 · 수정 · 이동 · 폐기 · 점검)에 남아요. 본인 이름으로 써 주세요.</p>' +
+    '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">들어가기</button></div>';
+  $(me() ? 'pin' : 'p_name').focus();
   var go = function () {
-    var v = $('pin').value.trim(); if (!v) return;
+    var name = $('p_name').value.trim().replace(/\s+/g, ' '), v = $('pin').value.trim();
+    if (!name) { $('p_err').textContent = '이름을 적어 주세요.'; return; }
+    if (!v) { $('p_err').textContent = 'PIN을 입력해 주세요.'; return; }
     $('p_ok').disabled = true;
-    api({ api: 'auth', pin: v }).then(function () {
-      store('un_pin', v); S.items = null; route();
+    api({ api: 'auth', pin: v }).then(function (d) {
+      if (!d.ok) throw new Error('PIN');
+      store('un_pin', v); S.items = null;
+      return loadAll(true).then(function () {
+        var names = userNames();
+        if (names.indexOf(name) < 0) {   // 대장 사용자 이름과 다르면 비슷한 이름 제안 (예: 지호 → 임지호)
+          var sim = names.filter(function (n) { return n.indexOf(name) >= 0 || name.indexOf(n) >= 0; });
+          if (sim.length && confirm('대장의 사용자 이름에 "' + name + '"이(가) 없어요.\n"' + sim[0] + '"(으)로 로그인할까요?\n\n취소를 누르면 "' + name + '" 그대로 써요.')) name = sim[0];
+        }
+        store('un_who', name); showMe(); toast(name + ' 님, 환영해요'); route();
+      });
     }).catch(function (e) { $('p_ok').disabled = false; $('p_err').textContent = /PIN|오류/.test(e.message) ? 'PIN이 맞지 않아요.' : e.message; });
   };
   $('p_ok').onclick = go;
   $('pin').onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  $('p_name').onkeydown = function (e) { if (e.key === 'Enter') $('pin').focus(); };
+}
+function logout() { try { localStorage.removeItem('un_pin'); localStorage.removeItem('un_who'); } catch (e) {} S.items = null; location.hash = '#/'; viewPin(''); }
+
+// ---------- 내 정보 ----------
+function viewMe() {
+  $('title').textContent = '내 정보';
+  var mine = S.items.filter(function (x) { return !x.discarded && splitUsers(x.user).indexOf(me()) >= 0; });
+  $('view').innerHTML = '<div class="card pad"><b style="font-size:17px">👤 ' + esc(me()) + '</b><p class="hint">기록(등록 · 수정 · 이동 · 폐기 · 점검)에 이 이름으로 남아요.</p></div>' +
+    '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내가 사용 중인 물품 ' + mine.length + '개</b><p class="hint">대장의 \'사용자\'가 ' + esc(me()) + '인 물품 (폐기 제외)</p></div>' +
+    (mine.length ? mine.map(function (x) { return '<div class="item" data-k="' + esc(x.code || x.asset) + '"><b>' + esc(x.name) + '</b><div class="s">' + esc(x.asset) + ' · ' + esc(x.loc || '-') + (x.detail ? ' / ' + esc(x.detail) : '') + '</div></div>'; }).join('') :
+      '<div class="muted" style="padding:14px">사용 중인 물품이 없어요</div>') + '</div>' +
+    '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내 최근 기록</b></div><div id="myrec" class="hist"><div class="muted">불러오는 중…</div></div></div>' +
+    '<button class="btn sub" id="logout">로그아웃</button>';
+  document.querySelectorAll('.item[data-k]').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
+  $('logout').onclick = function () { if (confirm('로그아웃할까요? 다시 들어오려면 이름과 PIN이 필요해요.')) logout(); };
+  api({ api: 'recent' }).then(function (d) {
+    if (!$('myrec')) return;
+    var my = d.items.filter(function (h) { return h.who === me(); }).slice(0, 15);
+    $('myrec').innerHTML = my.length ? my.map(function (h) { return '<div class="h"><div class="d">' + esc(h.date) + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) + (h.name ? ' · ' + esc(h.name) : '') + (h.result ? ' — ' + esc(h.result) : '') + '</div>'; }).join('') :
+      '<div class="muted" style="padding:14px">최근 기록이 없어요</div>';
+  }).catch(function () { if ($('myrec')) $('myrec').innerHTML = '<div class="muted" style="padding:14px">기록을 불러오지 못했어요</div>'; });
 }
 function loadAll(force) {
   if (S.items && !force) return Promise.resolve();
@@ -135,8 +182,11 @@ function route() {
   var parts = location.hash.replace(/^#\/?/, '').split('/');
   var r = parts[0] || 'home';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.r === r); });
+  if (!me() || !store('un_pin')) return viewPin('');
+  showMe();
   $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
   loadAll().then(function () {
+    if (r === 'me') return viewMe();
     if (r === 'i') return viewItem(decodeURIComponent(parts[1] || ''));
     if (r === 'scan') return viewScan();
     if (r === 'new') return viewNew();
@@ -231,11 +281,11 @@ function undoBtn(h) { return h.undo ? '<button class="btn sub mini" style="margi
 function bindUndo(again) {
   document.querySelectorAll('[data-u]').forEach(function (b) { b.onclick = function () {
     openSheet('<h3>↩ 되돌리기</h3><div class="hint">' + esc(b.dataset.ua) + '</div><p class="hint">' + esc(b.dataset.ut) + '</p><p class="hint">이 작업 전 값으로 되돌려요. 그 사이 같은 칸을 누가 또 고쳤으면 되돌리지 않아요.</p>' +
-      '<label>되돌리는 사람 이름</label><input id="u_who" placeholder="이름 (기록에 남아요)"><div id="u_err" class="err"></div>' +
+      whoBox() + '<div id="u_err" class="err"></div>' +
       '<button class="btn" id="u_ok" style="margin-top:14px">되돌리기</button><button class="btn sub" id="u_no" style="margin-top:8px">닫기</button>');
     $('u_no').onclick = closeSheet;
     $('u_ok').onclick = function () {
-      var who = $('u_who').value.trim(); if (!who) { $('u_err').textContent = '이름을 적어 주세요.'; return; }
+      var who = me(); if (!who) { $('u_err').textContent = '이름을 적어 주세요.'; return; }
       var ok = $('u_ok'); ok.disabled = true; ok.textContent = '처리 중…';
       api({ api: 'undo', who: who, lr: b.dataset.u, date: b.dataset.ud, asset: b.dataset.ua }).then(function (d) {
         S.items = null; closeSheet(); toast('되돌렸어요: ' + d.result); loadAll(true).then(again);
@@ -263,11 +313,11 @@ function openEdit(it, key, done) {
     f('e_detail', '상세위치', it.detail, '예) 탕비실 A2') + f('e_user', '사용자', it.user) +
     '<label>비고</label><textarea id="e_note">' + esc(it.note || '') + '</textarea>' +
     '<div class="two"><div>' + f('e_vendor', '렌탈업체', it.vendor) + '</div><div>' + f('e_rental', '렌탈기간', it.rental) + '</div></div>' +
-    '<label>고친 사람 이름</label><input id="e_who" placeholder="이름 (기록에 남아요)">' +
+    whoBox() +
     '<div id="e_err" class="err"></div><button class="btn" id="e_ok" style="margin-top:14px">저장</button><button class="btn sub" id="e_no" style="margin-top:8px">취소</button>');
   $('e_no').onclick = closeSheet;
   $('e_ok').onclick = function () {
-    var p = { api: 'edit', who: $('e_who').value.trim(), sheet: it.sheet, row: it.row, asset: it.asset, model: $('e_model').value.trim(), spec: $('e_spec').value.trim(),
+    var p = { api: 'edit', who: me(), sheet: it.sheet, row: it.row, asset: it.asset, model: $('e_model').value.trim(), spec: $('e_spec').value.trim(),
       loc: $('e_loc').value, detail: $('e_detail').value.trim(), user: $('e_user').value.trim(), note: $('e_note').value.trim(),
       vendor: $('e_vendor').value.trim(), rental: $('e_rental').value.trim() };
     if (!p.who) { $('e_err').textContent = '고친 사람 이름을 적어 주세요.'; return; }
@@ -283,11 +333,11 @@ function openCancel(it, key, done) {
   openSheet('<h3>🗑 등록 취소</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
     '<p class="hint">· 방금(24시간 안) 등록한 <b>맨 아래 줄</b>이면 줄이 완전히 지워져요.<br>· 그 외에는 줄은 남기고 비고에 "폐기(등록취소)"를 적어 목록 · 라벨 · 통합검색에서 숨겨요. (아래 물품들의 QR이 틀어지지 않게)</p>' +
     '<label>이유 (선택)</label><input id="c_memo" placeholder="예) 품명 잘못 선택, 중복 등록">' +
-    '<label>취소하는 사람 이름</label><input id="c_who" placeholder="이름 (기록에 남아요)">' +
+    whoBox() +
     '<div id="c_err" class="err"></div><button class="btn no" id="c_ok" style="margin-top:14px">등록 취소하기</button><button class="btn sub" id="c_no" style="margin-top:8px">닫기</button>');
   $('c_no').onclick = closeSheet;
   $('c_ok').onclick = function () {
-    var who = $('c_who').value.trim(); if (!who) { $('c_err').textContent = '이름을 적어 주세요.'; return; }
+    var who = me(); if (!who) { $('c_err').textContent = '이름을 적어 주세요.'; return; }
     var b = $('c_ok'); b.disabled = true; b.textContent = '처리 중…';
     api({ api: 'cancel', who: who, memo: $('c_memo').value, sheet: it.sheet, row: it.row, asset: it.asset }).then(function (d) {
       S.items = null; closeSheet(); toast(d.deleted ? '등록을 취소하고 줄을 지웠어요' : '등록취소로 숨겼어요');
@@ -301,7 +351,7 @@ function openMove(it, key) {
   openSheet('<h3>🚚 물품 이동</h3><div class="hint">' + esc(it.asset) + ' · 지금: ' + esc(it.loc || '-') + ' / ' + esc(it.detail || '-') + '</div>' +
     '<label>어디로 옮기나요?</label><select id="m_loc">' + siteOpts(it.loc) + '</select>' +
     '<label>상세위치 (선택)</label><input id="m_detail" value="' + esc(it.detail || '') + '" placeholder="예) 현장 사무실 창가">' +
-    '<label>옮기는 사람 이름</label><input id="m_who" placeholder="이름 (기록에 남아요)">' + preBox('m_pre') +
+    whoBox() + preBox('m_pre') +
     '<div id="m_err" class="err"></div><button class="btn" id="m_ok" style="margin-top:14px">이동하기</button><button class="btn sub" id="m_no" style="margin-top:8px">닫기</button>');
   var pre = function () {
     var loc = $('m_loc').value, det = $('m_detail').value.trim();
@@ -311,7 +361,7 @@ function openMove(it, key) {
   $('m_loc').onchange = pre; $('m_detail').oninput = pre; pre();
   $('m_no').onclick = closeSheet;
   $('m_ok').onclick = function () {
-    var who = $('m_who').value.trim(); if (!who) { $('m_err').textContent = '이름을 적어 주세요.'; return; }
+    var who = me(); if (!who) { $('m_err').textContent = '이름을 적어 주세요.'; return; }
     var b = $('m_ok'); b.disabled = true; b.textContent = '처리 중…';
     api({ api: 'move', who: who, sheet: it.sheet, row: it.row, asset: it.asset, loc: $('m_loc').value, detail: $('m_detail').value.trim() }).then(function (d) {
       S.items = null; closeSheet(); toast('옮겼어요: ' + d.result); loadAll(true).then(function () { viewItem(key); });
@@ -323,7 +373,7 @@ function openDiscard(it, key) {
   openSheet('<h3>🗑 물품 폐기</h3><div class="hint">' + esc(it.asset) + ' · ' + esc(it.name) + '</div>' +
     '<label>사유</label><div class="chips" style="flex-wrap:wrap;padding-top:2px" id="d_rs">' + R.map(function (r) { return '<span class="chip" data-r="' + r + '">' + r + '</span>'; }).join('') + '</div>' +
     '<label>메모 (선택)</label><input id="d_memo" placeholder="예) 화면 깨짐">' +
-    '<label>폐기하는 사람 이름</label><input id="d_who" placeholder="이름 (기록에 남아요)">' + preBox('d_pre') +
+    whoBox() + preBox('d_pre') +
     '<div id="d_err" class="err"></div><button class="btn no" id="d_ok" style="margin-top:14px">폐기하기</button><button class="btn sub" id="d_no" style="margin-top:8px">닫기</button>');
   var pre = function () {
     var m = $('d_memo').value.trim();
@@ -335,7 +385,7 @@ function openDiscard(it, key) {
   $('d_memo').oninput = pre; pre();
   $('d_no').onclick = closeSheet;
   $('d_ok').onclick = function () {
-    var who = $('d_who').value.trim();
+    var who = me();
     if (!sel) { $('d_err').textContent = '사유를 골라 주세요.'; return; }
     if (!who) { $('d_err').textContent = '이름을 적어 주세요.'; return; }
     if (!confirm(it.asset + ' 을(를) 폐기할까요?')) return;
@@ -362,12 +412,12 @@ function viewNew() {
     '<div class="two"><div><label>상세위치</label><input id="d_detail" placeholder="예) 탕비실 A2"></div><div><label>사용자</label><input id="d_user" placeholder="예) 공용"></div></div>' +
     '<label>비고</label><input id="d_note">' +
     '<div class="two"><div><label>렌탈업체</label><input id="d_vendor"></div><div><label>렌탈기간</label><input id="d_rental"></div></div>' +
-    '<label>등록하는 사람 이름</label><input id="d_who" placeholder="이름 (기록에 남아요)">' +
+    whoBox() +
     '<div id="d_err" class="err"></div><button class="btn" id="d_ok" style="margin-top:14px">등록하기</button></div><div id="d_done"></div>';
   $('d_pn').onchange = function () { if (this.value === '__new') { this.value = ''; openAddName(); } };
   var send = function (force) {
     var p = { api: 'add', force: force ? '1' : '', site: $('d_site').value, name: $('d_pn').value, model: $('d_model').value, spec: $('d_spec').value, qty: $('d_qty').value,
-      loc: $('d_loc').value, detail: $('d_detail').value, user: $('d_user').value, note: $('d_note').value, vendor: $('d_vendor').value, rental: $('d_rental').value, who: $('d_who').value.trim() };
+      loc: $('d_loc').value, detail: $('d_detail').value, user: $('d_user').value, note: $('d_note').value, vendor: $('d_vendor').value, rental: $('d_rental').value, who: me() };
     var err = !p.site ? '현장을 골라 주세요.' : !p.name ? '품명을 골라 주세요.' : !p.who ? '등록하는 사람 이름을 적어 주세요.' : '';
     if (err) { $('d_err').textContent = err; return; }
     var b = $('d_ok'); b.disabled = true; b.textContent = '등록 중…';
@@ -395,11 +445,11 @@ function nameOpts(sel) {
 }
 function openAddName() {
   openSheet('<h3>＋ 새 품명 추가</h3><p class="hint">목록에 없는 품명을 추가해요. 모두의 품명 목록에 바로 생기니 정확히 적어 주세요. (예: 프린터, 공기청정기)</p>' +
-    '<label>품명</label><input id="n_name" maxlength="30"><label>추가하는 사람 이름</label><input id="n_who" value="' + esc(($('d_who') || {}).value || '') + '" placeholder="이름 (기록에 남아요)">' +
+    '<label>품명</label><input id="n_name" maxlength="30">' + whoBox() +
     '<div id="n_err" class="err"></div><button class="btn" id="n_ok" style="margin-top:14px">추가</button><button class="btn sub" id="n_no" style="margin-top:8px">닫기</button>');
   $('n_name').focus(); $('n_no').onclick = closeSheet;
   $('n_ok').onclick = function () {
-    var name = $('n_name').value.trim(), who = $('n_who').value.trim();
+    var name = $('n_name').value.trim(), who = me();
     if (!name) { $('n_err').textContent = '품명을 적어 주세요.'; return; }
     if (!who) { $('n_err').textContent = '이름을 적어 주세요.'; return; }
     var b = $('n_ok'); b.disabled = true; b.textContent = '추가 중…';
@@ -496,7 +546,7 @@ function viewCheck(site) {
     '<div id="k_msg" class="hint"></div>' +
     '<label style="display:flex;gap:6px;align-items:center;margin:10px 0 0"><input type="checkbox" id="k_only" style="width:auto"> 아직 확인 안 한 것만 보기</label></div>' +
     '<div class="card" id="k_list"></div>' +
-    '<div class="card pad"><label style="margin-top:0">점검한 사람 이름</label><input id="k_who" placeholder="이름 (기록에 남아요)"><div id="k_err" class="err"></div>' +
+    '<div class="card pad">' + whoBox() + '<div id="k_err" class="err"></div>' +
     '<button class="btn" id="k_ok" style="margin-top:12px">✅ 점검 완료</button><button class="btn sub" id="k_reset" style="margin-top:8px">체크 모두 지우기</button></div><div id="k_done"></div>';
   var render = function () {
     var n = list.filter(function (x) { return done[x.code]; }).length;
@@ -521,7 +571,7 @@ function viewCheck(site) {
   };
   $('k_reset').onclick = function () { done = {}; save(); render(); };
   $('k_ok').onclick = function () {
-    var who = $('k_who').value.trim(); if (!who) { $('k_err').textContent = '점검한 사람 이름을 적어 주세요.'; return; }
+    var who = me(); if (!who) { $('k_err').textContent = '점검한 사람 이름을 적어 주세요.'; return; }
     var codes = list.filter(function (x) { return done[x.code]; }).map(function (x) { return x.code; });
     var b = $('k_ok'); b.disabled = true; b.textContent = '저장 중…'; $('k_err').textContent = '';
     api({ api: 'check', site: site, codes: codes.join(','), who: who }).then(function (d) {
