@@ -82,7 +82,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="title">유엔 물품관리</h1><button id="meBtn" class="me" style="display:none"></button><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
+<header><button id="backBtn" title="뒤로" style="display:none;font-size:26px;line-height:1;padding:0 6px 2px 0">‹</button><h1 id="title">유엔 물품관리</h1><button id="meBtn" class="me" style="display:none"></button><button id="reload" title="새로 고침"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button></header>
 <main id="view"><div class="muted">불러오는 중…</div></main>
 <nav>
   <a href="#/" data-r="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></svg>홈</a>
@@ -194,6 +194,7 @@ function route() {
   closeSheet();
   var parts = location.hash.replace(/^#\/?/, '').split('/');
   var r = parts[0] || 'home';
+  $('backBtn').style.display = ['home', 'search', 'scan', 'new', 'add'].indexOf(r) < 0 ? '' : 'none';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.r === r); });
   if (!me() || !store('un_pin')) return viewPin('');
   showMe();
@@ -211,10 +212,16 @@ function route() {
     viewHome();
   }).catch(function (e) {
     if (e.needPin) return viewPin(store('un_pin') ? 'PIN이 바뀌었어요. 새 PIN을 입력해 주세요.' : '');
-    $('view').innerHTML = '<div class="card pad">불러오지 못했어요. 잠시 후 다시 시도해 주세요.<div class="err">' + esc(e.message) + '</div></div>';
+    $('title').textContent = '유엔 물품관리';
+    var off = !navigator.onLine || /fetch|network|load failed/i.test(e.message);
+    $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:36px">' + (off ? '📶' : '⚠️') + '</div><b>' + (off ? '인터넷 연결을 확인해 주세요' : '불러오지 못했어요') + '</b>' +
+      '<p class="hint">' + (off ? '와이파이나 데이터가 켜져 있는지 확인한 뒤 다시 시도해 주세요.' : '잠시 후 다시 시도해 주세요.') + '</p>' + (off ? '' : '<div class="err">' + esc(e.message) + '</div>') +
+      '<button class="btn" id="retry" style="margin-top:12px">다시 시도</button></div>';
+    $('retry').onclick = function () { S.items = null; route(); };
   });
 }
 window.addEventListener('hashchange', route);
+$('backBtn').onclick = function () { if (history.length > 1) history.back(); else location.hash = '#/'; };
 $('reload').onclick = function () { S.items = null; route(); toast('최신 내용으로 새로 고쳤어요'); };
 
 // ---------- 홈 ----------
@@ -319,9 +326,9 @@ function viewSearch() {
   $('xls').onclick = exportList;
   $('sort').onclick = function () { S.sort = S.sort === 'name' ? '' : 'name'; this.textContent = S.sort ? '품명순 ✓' : '품명순'; renderList(); };
 
-  $('q').oninput = function () { S.q = this.value; renderList(); };
-  $('old').onchange = function () { S.hideOld = this.checked; renderList(); };
-  document.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.site = b.dataset.s; viewSearch(); }; });
+  $('q').oninput = function () { S.q = this.value; S.limit = 200; renderList(); };
+  $('old').onchange = function () { S.hideOld = this.checked; S.limit = 200; renderList(); };
+  document.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.site = b.dataset.s; S.limit = 200; viewSearch(); }; });
   renderList();
 }
 function filtered() {   // 지금 검색어 · 현장 칩 · 폐기 숨기기 그대로
@@ -336,11 +343,14 @@ function renderList() {
   var list = filtered();
   $('count').textContent = list.length + '개';
   $('xls').disabled = !list.length;
-  $('list').innerHTML = list.length ? list.slice(0, 200).map(function (it) {
+  $('list').innerHTML = list.length ? list.slice(0, S.limit || 200).map(function (it) {
     return '<div class="item" data-k="' + esc(it.code || it.asset) + '"><b>' + esc(it.asset) + '</b>' + (it.discarded ? '<span class="tag">폐기</span>' : '') +
       '<div class="s">' + esc([it.name, it.model].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="s">📍 ' + esc(it.loc || '-') + (it.detail ? ' · ' + esc(it.detail) : '') + ' &nbsp; 👤 ' + esc(it.user || '-') + '</div></div>';
   }).join('') : '<div class="muted">찾는 물품이 없어요</div>';
+  var more = list.length - (S.limit || 200);
+  if (more > 0) $('list').innerHTML += '<button class="btn sub" id="more" style="border-radius:0">더 보기 (' + more + '개 더)</button>';
+  if ($('more')) $('more').onclick = function () { S.limit = (S.limit || 200) + 200; renderList(); };
   document.querySelectorAll('.item').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
 }
 
@@ -362,7 +372,8 @@ function viewItem(key) {
   var it = findItem(key);
   if (!it) { $('view').innerHTML = '<div class="card"><div class="head"><div class="t">물품을 찾을 수 없어요</div></div><div class="pad">코드: ' + esc(key) + '<br><br>라벨을 다시 찍어 보거나 관리자에게 문의해 주세요.</div></div>'; return; }
   $('title').textContent = '물품 정보';
-  var rows = [['품명', it.name], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc], ['상세위치', it.detail], ['사용자', it.user], ['비고', it.note], ['렌탈업체', it.vendor], ['렌탈기간', it.rental]];
+  var rows = [['품명', it.name, 1], ['모델명', it.model], ['규격사양', it.spec], ['현재위치', it.loc, 1], ['상세위치', it.detail], ['사용자', it.user, 1], ['비고', it.note], ['렌탈업체', it.vendor], ['렌탈기간', it.rental],
+    ['라벨', it.printed ? '🏷 ' + it.printed + ' 출력' : '아직 안 뽑음', 1]].filter(function (r) { return r[2] || String(r[1] || '').trim(); });   // 빈 칸은 숨기기 (품명 · 현재위치 · 사용자 · 라벨은 항상)
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
@@ -573,15 +584,10 @@ function viewRecent() {
         var it = h.asset && S.items.filter(function (x) { return x.asset === h.asset; })[0];
         var link = h.asset ? (it ? '<a href="#/i/' + encodeURIComponent(it.code || it.asset) + '">' + esc(h.asset) + '</a>' : esc(h.asset)) : esc(h.name || '');
         var st = (h.status === '반영완료' || h.status === '승인') ? '' : ' · <b>' + esc(h.status) + '</b>';
-        var btns = it && !it.discarded ? '<div class="two" style="margin-top:8px"><button class="btn sub" data-e="' + esc(it.asset) + '" style="padding:8px">✏️ 수정</button>' +
-          '<button class="btn no" data-c="' + esc(it.asset) + '" style="padding:8px">↶ 등록 취소</button></div>' : '';
+        var btns = '';
         return '<div class="h"><div class="d">' + esc(h.date) + ' · ' + esc(h.who) + st + '</div>' + (HIST_ICON[h.type] || '•') + ' ' + esc(h.type) + ' · ' + link +
           (h.result ? '<div class="d" style="margin-top:2px">' + esc(h.result) + '</div>' : '') + btns + undoBtn(h) + '</div>';
       }).join('') : '<div class="muted" style="padding:14px">기록이 없어요</div>');
-    var byAsset = function (a) { return S.items.filter(function (x) { return x.asset === a; })[0]; };
-    var again = function () { location.hash = '#/recent'; route(); };
-    document.querySelectorAll('[data-e]').forEach(function (b) { b.onclick = function () { var it = byAsset(b.dataset.e); openEdit(it, it.code || it.asset, again); }; });
-    document.querySelectorAll('[data-c]').forEach(function (b) { b.onclick = function () { var it = byAsset(b.dataset.c); openCancel(it, it.code || it.asset, again); }; });
     bindUndo(viewRecent);
   }).catch(function (e) { $('rec').innerHTML = '<div class="pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
 }
