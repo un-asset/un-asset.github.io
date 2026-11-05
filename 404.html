@@ -171,7 +171,8 @@ function viewMe() {
     (mine.length ? mine.map(function (x) { return '<div class="item" data-k="' + esc(x.code || x.asset) + '"><b>' + esc(x.name) + '</b><div class="s">' + esc(x.asset) + ' · ' + esc(x.loc || '-') + (x.detail ? ' / ' + esc(x.detail) : '') + '</div></div>'; }).join('') :
       '<div class="muted" style="padding:14px">사용 중인 물품이 없어요</div>') + '</div>' +
     '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내 최근 기록</b></div><div id="myrec" class="hist"><div class="muted">불러오는 중…</div></div></div>' +
-    '<button class="btn sub" id="logout">로그아웃</button>';
+    '<button class="btn sub" id="logout">로그아웃</button>' +
+    '<p class="hint" style="text-align:center;margin:14px 0 4px">유엔 물품관리 v' + APP_VER + '</p>';
   document.querySelectorAll('.item[data-k]').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
   $('logout').onclick = function () { if (confirm('로그아웃할까요? 다시 들어오려면 이름과 PIN이 필요해요.')) logout(); };
   api({ api: 'recent' }).then(function (d) {
@@ -251,6 +252,7 @@ function viewHome() {
 }
 
 // ---------- 사용법 (기능별 그림 설명) ----------
+var APP_VER = '1.0 (2026.11.05)';   // 앱 버전 — 바꿀 때마다 올리기
 var HELP_VER = '261105a';   // 사용법 그림을 바꾸면 이 값도 바꾸기 (폰에 예전 그림이 남지 않게)
 var HELP = [
   { g: '처음 시작', id: 'login', t: '🔐 로그인 · 로그아웃', intro: '처음 한 번만 이름과 회사 PIN을 넣으면 돼요.',
