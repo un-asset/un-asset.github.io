@@ -242,6 +242,7 @@ function viewHome() {
 }
 
 // ---------- 사용법 (기능별 그림 설명) ----------
+var HELP_VER = '261105a';   // 사용법 그림을 바꾸면 이 값도 바꾸기 (폰에 예전 그림이 남지 않게)
 var HELP = [
   { g: '처음 시작', id: 'login', t: '🔐 로그인 · 로그아웃', intro: '처음 한 번만 이름과 회사 PIN을 넣으면 돼요.',
     steps: ['<b>이름</b> 입력 (대장 \'사용자\'에 적힌 이름과 똑같이)', '<b>회사 PIN</b> 입력 (관리자에게 받기)', '<b>[들어가기]</b>'],
@@ -280,7 +281,7 @@ var HELP = [
     steps: ['물품 화면 맨 아래 <b>기록</b> (또는 홈 → 최근 기록)', '되돌릴 기록의 <b>[↩ 되돌리기]</b>', '<b>[되돌리기]</b>로 확인'],
     tips: '그 사이 누가 같은 칸을 또 고쳤으면 되돌리지 않아요. 그땐 직접 수정해 주세요.' },
   { g: '라벨', id: 'label', t: '🏷 라벨 파일 받기 → P-touch 출력', intro: '뽑을 물품만 골라 P-touch용 엑셀을 받아요.',
-    steps: ['홈 → <b>[🏷 라벨 파일 받기]</b> → <b>현장</b> 고르기', '뽑을 물품 <b>체크</b>', '<b>[📥 엑셀 받기]</b>', 'PC P-touch Editor에서 label_9mm.lbx 열기 → 받은 엑셀 연결 → 인쇄 (자세한 순서는 라벨 화면 맨 아래)'],
+    steps: ['홈 → <b>[🏷 라벨 파일 받기]</b> → <b>현장</b> 고르기', '뽑을 물품 <b>체크</b>', '<b>[📥 엑셀 받기]</b>', 'PC P-touch Editor에서 label_9mm.lbx 열기 → 받은 엑셀 연결 → 인쇄 <a class="more" href="#/label" onclick="S.labelHow=true">그림 설명 보기 ›</a>'],
     tips: '받은 물품은 \'출력함\'으로 표시돼 다음엔 안 보여요. 다시 뽑으려면 \'이미 출력한 물품 숨기기\'를 끄세요.' }
 ];
 function viewHelp(id) {
@@ -298,7 +299,7 @@ function viewHelp(id) {
   var h = HELP[i], prev = HELP[i - 1], next = HELP[i + 1];
   $('title').textContent = h.t;
   $('view').innerHTML = '<div class="card"><div class="pad"><b>' + h.intro + '</b></div>' +
-    '<div class="shot"><img src="help/' + h.id + '.webp" alt="' + esc(h.t) + ' 화면" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>' +
+    '<div class="shot"><img src="help/' + h.id + '.webp?v=' + HELP_VER + '" alt="' + esc(h.t) + ' 화면" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></div>' +
     '<ol class="steps">' + h.steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></div>' +
     (h.tips ? '<div class="card pad"><b>💡 알아두기</b><p class="hint" style="line-height:1.7">' + h.tips + '</p></div>' : '') +
     '<div class="card pad row">' + (prev ? '<a class="more" href="#/help/' + prev.id + '">‹ ' + prev.t.replace(/^\S+\s/, '') + '</a>' : '<a class="more" href="#/help">‹ 목록</a>') +
@@ -643,7 +644,10 @@ function viewLabel() {
     '</div><div class="card" id="l_list" style="max-height:55vh;overflow:auto"></div>' +
     '<div class="card pad"><button class="btn" id="l_ok">📥 엑셀 받기</button>' +
     '<a class="btn sub" href="/label_9mm.lbx" download="label_9mm.lbx" style="text-align:center;text-decoration:none;margin-top:8px">📄 라벨 양식(.lbx) 받기 <span style="font-weight:normal">(처음 한 번)</span></a></div>' +
-    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint" style="line-height:1.7">① 위에서 현장을 고르고 뽑을 물품을 체크 → <b>[📥 엑셀 받기]</b><br>② PC에서 <b>P-touch Editor</b> 실행 → <b>label_9mm.lbx</b> 열기 (없으면 위 [📄 라벨 양식 받기]로 먼저 받기)<br>③ 오른쪽 위 <b>[데이터베이스]</b> 열기 → <b>[찾아보기]</b>로 ①에서 받은 엑셀 선택<br>④ <b>"머리글 행에 필드 이름 포함"</b> 체크 해제<br>⑤ <b>할당 창</b>에서 각 개체에 맞는 데이터베이스 필드를 고른 뒤 <b>[인쇄]</b></p></div>';
+    '<div class="card pad"><b>P-touch에서 뽑는 방법</b><p class="hint" style="line-height:1.7">① 위에서 현장 고르고 체크 → <b>[📥 엑셀 받기]</b><br>② PC에서 <b>P-touch Editor</b> → <b>label_9mm.lbx</b> 열기 (없으면 위 [📄 라벨 양식 받기])<br>③ 그다음은 아래 그림 순서대로</p>' +
+      '<button class="btn sub" id="l_how" style="margin-top:10px">📖 그림으로 보기 ▼</button>' +
+      '<div id="l_img" style="display:none;margin-top:10px"><div class="shot" style="margin:0"><img src="help/ptouch.webp?v=' + HELP_VER + '" alt="P-touch 라벨 출력 순서" loading="lazy"></div>' +
+      '<a class="btn sub" href="help/ptouch.webp?v=' + HELP_VER + '" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-top:8px">🔍 새 창에서 크게 보기</a></div></div>';
   var all = function () {   // 이 현장 물품, 시트 행 순서대로
     var site = $('l_site').value;
     return S.items.filter(function (x) { return x.sheet === site && !x.discarded && x.code; }).sort(function (a, b) { return a.row - b.row; });
@@ -673,6 +677,8 @@ function viewLabel() {
   $('l_all').onclick = function () { shown().forEach(function (x) { sel[x.code] = 1; }); render(); };
   $('l_none').onclick = function () { shown().forEach(function (x) { delete sel[x.code]; }); render(); };
   render();
+  $('l_how').onclick = function () { var o = $('l_img').style.display === 'none'; $('l_img').style.display = o ? '' : 'none'; this.textContent = o ? '📖 그림 접기 ▲' : '📖 그림으로 보기 ▼'; };
+  if (S.labelHow) { S.labelHow = false; $('l_how').onclick.call($('l_how')); setTimeout(function () { $('l_how').scrollIntoView({ behavior: 'smooth' }); }, 100); }
   $('l_ok').onclick = function () {
     var l = all().filter(function (x) { return sel[x.code]; }).sort(function (a, b) { return a.row - b.row; }), site = $('l_site').value;
     var rows = l.map(function (x) { return [x.asset, 'HTTPS://UN-ASSET.GITHUB.IO/' + x.code]; });
