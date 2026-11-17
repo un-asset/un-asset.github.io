@@ -97,84 +97,159 @@
 // ▼ 구글 웹앱 주소. 주소가 바뀌면 이 한 줄만 고치세요. (index.html, 404.html 둘 다)
 var WEBAPP = 'https://script.google.com/macros/s/AKfycbxfMqPwY45tMT6yZM9Au3KqKKFk-cRH5VPAY5khVu8j93Dfdf_i7GbfjWBfvPu0Dv5Ffw/exec';
 
-try { localStorage.removeItem('un_name'); } catch (e) {}   // 예전에 기억한 신청자 이름 지우기
-var S = { meta: null, items: null, q: '', site: '전체', hideOld: true };
+try { ['un_name', 'un_pin', 'un_who'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}   // v1.0 공용 PIN 로그인 흔적 지우기
+var S = { meta: null, items: null, q: '', site: '', hideOld: true };
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k) || ''; localStorage.setItem(k, v); } catch (e) { return ''; } }
 function toast(t) { var el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { el.style.display = 'none'; }, 3000); }
 
+// 서버와 주고받기: POST(본문 JSON) → 비밀번호 · 로그인 열쇠가 주소에 남지 않음
 function api(params) {
-  if (params.pin === undefined) params.pin = store('un_pin');   // 한 번 입력한 PIN은 이 기기에 기억
-  if (params.tk === undefined) params.tk = store('un_tk');   // 로그인한 기기 열쇠 (PIN 잠금 중에도 통과)
-  if (params.who === undefined && me()) params.who = me();   // 기록 이름 = 로그인한 이름 (고정)
-  var qs = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
-  return fetch(WEBAPP + '?' + qs).then(function (r) { return r.json(); }).then(function (d) {
-    if (d.needPin) { store('un_tk', ''); var e = new Error('PIN이 필요해요'); e.needPin = true; throw e; }
+  params.tk = store('un_tk');
+  return fetch(WEBAPP, { method: 'POST', body: JSON.stringify(params) }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.needLogin) { setLogin('', null); var e = new Error(d.error || '다시 로그인해 주세요'); e.needLogin = true; throw e; }
     if (d.tk) store('un_tk', d.tk);
+    if (d.user) setUser(d.user);
+    if (d.pending) { var e2 = new Error(d.error || '승인 대기 중'); e2.pending = true; throw e2; }
     if (!d.ok) { var e3 = new Error(d.error || '오류'); e3.dup = d.dup; throw e3; } return d;
   });
 }
 
-// ---------- 로그인: 이름 + 회사 PIN (처음 한 번만) ----------
-function me() { return store('un_who'); }
+// ---------- 회원: 로그인한 사람 · 권한 ----------
+// 권한: 직원(근무 현장 물품 등록 · 수정 · 이동) / 현장관리자(+ 폐기 · 등록 취소 · 라벨) / 관리자(전부 + 회원 관리)
+function U() { try { return JSON.parse(store('un_user') || 'null'); } catch (e) { return null; } }
+function setUser(u) { store('un_user', JSON.stringify(u)); showMe(); }
+function setLogin(tk, u) { store('un_tk', tk || ''); store('un_user', u ? JSON.stringify(u) : ''); showMe(); }
+function me() { var u = U(); return u ? u.name : ''; }
+function isAdmin() { var u = U(); return !!u && u.role === '관리자'; }
+function isMgr() { var u = U(); return !!u && (u.role === '관리자' || u.role === '현장관리자'); }
+function mySites() { var u = U(); return isAdmin() ? S.meta.sites.map(function (s) { return s.name; }) : (u ? u.sites : []); }
+function mine(it) { var u = U(); return isAdmin() || (!!u && (u.sites.indexOf(it.sheet) >= 0 || u.sites.indexOf(it.loc) >= 0)); }   // 출처 탭 또는 현재위치가 내 근무 현장
+function canManage(it) { return mine(it) && isMgr(); }
+function roleTxt(r) { return r === '현장관리자' ? '현장 관리자' : (r || '직원'); }
 function whoBox() { return '<label>처리하는 사람</label><div class="fix">👤 ' + esc(me()) + ' (자동)</div>'; }
-function showMe() { var b = $('meBtn'); if (me() && store('un_pin')) { b.textContent = '👤 ' + me(); b.style.display = ''; } else b.style.display = 'none'; }
+function showMe() { var b = $('meBtn'), u = U(); if (u && u.status === '승인' && store('un_tk')) { b.textContent = '👤 ' + u.name; b.style.display = ''; } else b.style.display = 'none'; }
 $('meBtn').onclick = function () { location.hash = '#/me'; };
 function splitUsers(u) { return String(u || '').split(/[,\/·]/).map(function (n) { return n.trim(); }).filter(Boolean); }
-function userNames() {   // 대장 J열(사용자)에 있는 이름들
-  var set = {};
-  (S.items || []).forEach(function (x) { splitUsers(x.user).forEach(function (n) { if (n !== '공용') set[n] = 1; }); });
-  return Object.keys(set).sort();
+function siteChips(id, all, on) {   // 현장 여러 개 고르기 칩
+  return '<div class="chips" id="' + id + '" style="flex-wrap:wrap;padding-top:4px">' + all.map(function (s) { return '<span class="chip' + (on.indexOf(s) >= 0 ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</span>'; }).join('') + '</div>';
 }
-function viewPin(msg) {
-  closeSheet(); showMe();
-  $('title').textContent = '유엔 물품관리';
-  $('view').innerHTML = '<div class="card pad"><b>로그인</b><p class="hint">이 기기에서 한 번만 입력하면 다음부터는 바로 들어와요.</p>' +
-    '<label>이름</label><input id="p_name" maxlength="20" autocomplete="name" value="' + esc(me()) + '" placeholder="예) 홍길동">' +
-    '<label>회사 PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="off" style="letter-spacing:4px">' +
-    '<p class="hint">입력한 이름이 모든 기록(등록 · 수정 · 이동 · 폐기)에 남아요. 본인 이름으로 써 주세요.</p>' +
-    '<div id="p_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="p_ok" style="margin-top:12px">들어가기</button></div>';
-  $(me() ? 'pin' : 'p_name').focus();
+function bindChips(id) { document.querySelectorAll('#' + id + ' .chip').forEach(function (c) { c.onclick = function () { c.classList.toggle('on'); }; }); }
+function chipVals(id) { return Array.prototype.map.call(document.querySelectorAll('#' + id + ' .chip.on'), function (c) { return c.dataset.s; }); }
+
+// ---------- 로그인 · 회원가입 · 승인 대기 ----------
+function authCard(html) { closeSheet(); showMe(); document.querySelector('nav').style.display = 'none'; $('view').innerHTML = html; }   // 로그인 전에는 아래 메뉴 숨김
+function viewLogin(msg) {
+  $('title').textContent = '유엔 물품관리'; $('backBtn').style.display = 'none';
+  authCard('<div class="card pad"><b>로그인</b><p class="hint">이 기기에서 한 번만 로그인하면 다음부터 바로 들어와요.</p>' +
+    '<label>아이디</label><input id="l_id" maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false" value="' + esc(store('un_lastid')) + '">' +
+    '<label>비밀번호</label><input id="l_pw" type="password" maxlength="64" autocomplete="current-password">' +
+    '<div id="l_err" class="err">' + esc(msg || '') + '</div><button class="btn" id="l_ok" style="margin-top:12px">로그인</button></div>' +
+    '<div class="card pad" style="text-align:center"><p class="hint" style="margin:0 0 10px">처음 쓰시나요?</p><a class="btn sub" href="#/signup" style="text-decoration:none">회원가입 신청</a>' +
+    '<p class="hint">비밀번호를 잊었으면 관리자에게 초기화를 요청하세요.</p></div>');
+  $(store('un_lastid') ? 'l_pw' : 'l_id').focus();
   var go = function () {
-    var name = $('p_name').value.trim().replace(/\s+/g, ' '), v = $('pin').value.trim();
-    if (!name) { $('p_err').textContent = '이름을 적어 주세요.'; return; }
-    if (!v) { $('p_err').textContent = 'PIN을 입력해 주세요.'; return; }
-    $('p_ok').disabled = true;
-    api({ api: 'auth', pin: v, tk: '' }).then(function (d) {
-      if (!d.ok) throw new Error('PIN');
-      store('un_pin', v); S.items = null;
-      return loadAll(true).then(function () {
-        var names = userNames();
-        if (names.indexOf(name) < 0) {   // 대장 사용자 이름과 다르면 비슷한 이름 제안 (예: 지호 → 임지호)
-          var sim = names.filter(function (n) { return n.indexOf(name) >= 0 || name.indexOf(n) >= 0; });
-          if (sim.length && confirm('대장의 사용자 이름에 "' + name + '"이(가) 없어요.\n"' + sim[0] + '"(으)로 로그인할까요?\n\n취소를 누르면 "' + name + '" 그대로 써요.')) name = sim[0];
-        }
-        store('un_who', name); showMe(); toast(name + ' 님, 환영해요');
-        if (!S.fromQR) history.replaceState(null, '', location.pathname + '#/');   // QR로 들어온 게 아니면 첫 화면(검색)으로
-        S.fromQR = false; route();
-      });
-    }).catch(function (e) { $('p_ok').disabled = false; $('p_err').textContent = /PIN|오류/.test(e.message) ? 'PIN이 맞지 않아요.' : e.message; });
+    var id = $('l_id').value.trim().toLowerCase(), pw = $('l_pw').value;
+    if (!id || !pw) { $('l_err').textContent = '아이디와 비밀번호를 넣어 주세요.'; return; }
+    var b = $('l_ok'); b.disabled = true; b.textContent = '확인 중…';
+    api({ api: 'login', id: id, pw: pw }).then(function (d) {
+      store('un_lastid', id); setLogin(d.tk, d.user); S.items = null;
+      if (d.user.status !== '승인') return viewPending();
+      toast(d.user.name + ' 님, 환영해요');
+      if (!S.fromQR) history.replaceState(null, '', location.pathname + '#/');
+      S.fromQR = false; route();
+    }).catch(function (e) { b.disabled = false; b.textContent = '로그인'; $('l_err').textContent = e.message; });
   };
-  $('p_ok').onclick = go;
-  $('pin').onkeydown = function (e) { if (e.key === 'Enter') go(); };
-  $('p_name').onkeydown = function (e) { if (e.key === 'Enter') $('pin').focus(); };
+  $('l_ok').onclick = go;
+  $('l_pw').onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  $('l_id').onkeydown = function (e) { if (e.key === 'Enter') $('l_pw').focus(); };
 }
-function logout() { try { localStorage.removeItem('un_pin'); localStorage.removeItem('un_who'); localStorage.removeItem('un_tk'); } catch (e) {} S.items = null; location.hash = '#/'; viewPin(''); }
+function viewSignup() {
+  $('title').textContent = '회원가입 신청'; $('backBtn').style.display = '';
+  authCard('<div class="card pad"><p class="hint" style="margin-top:0">신청하면 관리자가 승인한 뒤에 쓸 수 있어요.</p><div class="muted" id="g_load">현장 목록 불러오는 중…</div></div>');
+  signupSites().then(function (sites) {
+    var star = ' <span style="color:var(--red)">*</span>';
+    $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">신청하면 관리자가 승인한 뒤에 쓸 수 있어요.</p>' +
+      '<label>이름' + star + '</label><input id="g_name" maxlength="20" autocomplete="name" placeholder="예) 홍길동"><p class="hint">모든 기록(등록 · 수정 · 이동 · 폐기)에 이 이름이 남아요. 실명으로 적어 주세요.</p>' +
+      '<label>아이디' + star + '</label><input id="g_id" maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="예) hong"><p class="hint">영문 소문자 · 숫자 4~20자</p>' +
+      '<label>비밀번호' + star + '</label><input id="g_pw" type="password" maxlength="64" autocomplete="new-password"><p class="hint">8자 이상</p>' +
+      '<label>비밀번호 확인' + star + '</label><input id="g_pw2" type="password" maxlength="64" autocomplete="new-password">' +
+      '<label>근무 현장' + star + ' <span style="font-size:12px">(여러 곳 선택 가능)</span></label>' + siteChips('g_sites', sites, []) +
+      '<div id="g_err" class="err"></div><button class="btn" id="g_ok" style="margin-top:16px">신청하기</button></div>';
+    bindChips('g_sites');
+    $('g_ok').onclick = function () {
+      var name = $('g_name').value.trim().replace(/\s+/g, ' '), id = $('g_id').value.trim().toLowerCase(), pw = $('g_pw').value, sites = chipVals('g_sites');
+      var err = !name ? '이름을 적어 주세요.' : !/^[a-z0-9]{4,20}$/.test(id) ? '아이디는 영문 소문자 · 숫자 4~20자로 만들어 주세요.' :
+        pw.length < 8 ? '비밀번호는 8자 이상으로 만들어 주세요.' : pw !== $('g_pw2').value ? '비밀번호 확인이 달라요.' : !sites.length ? '근무 현장을 하나 이상 골라 주세요.' : '';
+      if (err) { $('g_err').textContent = err; return; }
+      var b = $('g_ok'); b.disabled = true; b.textContent = '신청 중…';
+      api({ api: 'signup', name: name, id: id, pw: pw, sites: sites.join(',') }).then(function (d) {
+        store('un_lastid', id); setLogin(d.tk, d.user); history.replaceState(null, '', location.pathname + '#/'); viewPending();
+      }).catch(function (e) { b.disabled = false; b.textContent = '신청하기'; $('g_err').textContent = e.message; });
+    };
+  }).catch(function (e) { $('view').innerHTML = '<div class="card pad">현장 목록을 불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
+}
+function signupSites() {   // 로그인 전에 고를 현장 목록 (서버 목록 탭 B열)
+  return fetch(WEBAPP, { method: 'POST', body: JSON.stringify({ api: 'signup', check: '1' }) }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.sites && d.sites.length) return d.sites;
+    throw new Error(d && d.error || '현장 목록 없음');
+  });
+}
+function viewPending() {
+  var u = U() || {};
+  $('title').textContent = '유엔 물품관리'; $('backBtn').style.display = 'none';
+  authCard('<div class="card pad" style="text-align:center;padding:28px 16px"><div style="font-size:40px">⏳</div><b style="font-size:17px">승인 기다리는 중</b>' +
+    '<p class="hint">' + esc(u.name) + '(' + esc(u.id) + ') 님의 가입 신청이 접수됐어요.<br>관리자가 승인하면 바로 쓸 수 있어요.</p>' +
+    '<table style="margin:14px 0;text-align:left"><tr><td class="k">신청 현장</td><td>' + esc((u.sites || []).join(', ')) + '</td></tr><tr><td class="k">신청일</td><td>' + esc(String(u.joined || '').slice(0, 10)) + '</td></tr></table>' +
+    '<div id="w_err" class="err"></div><button class="btn" id="w_ok">승인됐는지 확인</button><button class="btn gray" id="w_out" style="margin-top:8px">로그아웃</button></div>');
+  $('w_ok').onclick = function () {
+    var b = this; b.disabled = true;
+    api({ api: 'me' }).then(function (d) {
+      b.disabled = false;
+      if (d.user.status === '승인') { toast('승인됐어요! ' + d.user.name + ' 님, 환영해요'); S.items = null; location.hash = '#/'; route(); }
+      else $('w_err').textContent = '아직 승인 전이에요. 관리자에게 승인을 부탁해 주세요.';
+    }).catch(function (e) { b.disabled = false; if (!e.needLogin) $('w_err').textContent = e.message; else viewLogin(e.message); });
+  };
+  $('w_out').onclick = logout;
+}
+function logout() { setLogin('', null); S.items = null; S.meta = null; history.replaceState(null, '', location.pathname + '#/'); viewLogin(''); }
+function openChangePw(force) {
+  openSheet('<h3>🔑 비밀번호 변경</h3>' + (force ? '<p class="hint" style="color:var(--red)">관리자가 초기화한 임시 비밀번호예요. 새 비밀번호로 바꿔 주세요.</p>' : '<p class="hint">바꾸면 다른 기기에서는 다시 로그인해야 해요.</p>') +
+    '<label>지금 비밀번호' + (force ? ' (임시 비밀번호)' : '') + '</label><input id="pw_old" type="password" autocomplete="current-password">' +
+    '<label>새 비밀번호 (8자 이상)</label><input id="pw_new" type="password" autocomplete="new-password"><label>새 비밀번호 확인</label><input id="pw_new2" type="password" autocomplete="new-password">' +
+    '<div id="pw_err" class="err"></div><button class="btn" id="pw_ok" style="margin-top:14px">바꾸기</button>' + (force ? '' : '<button class="btn sub" id="pw_no" style="margin-top:8px">닫기</button>'));
+  if (!force) $('pw_no').onclick = closeSheet;
+  $('pw_ok').onclick = function () {
+    var o = $('pw_old').value, n = $('pw_new').value;
+    if (n.length < 8) { $('pw_err').textContent = '새 비밀번호는 8자 이상으로 해 주세요.'; return; }
+    if (n !== $('pw_new2').value) { $('pw_err').textContent = '새 비밀번호 확인이 달라요.'; return; }
+    var b = $('pw_ok'); b.disabled = true;
+    api({ api: 'chpw', old: o, pw: n }).then(function () { closeSheet(); toast('비밀번호를 바꿨어요'); })
+      .catch(function (e) { b.disabled = false; $('pw_err').textContent = e.message; });
+  };
+}
 
 // ---------- 내 정보 ----------
 function viewMe() {
   $('title').textContent = '내 정보';
-  var mine = S.items.filter(function (x) { return !x.discarded && splitUsers(x.user).indexOf(me()) >= 0; });
-  $('view').innerHTML = '<div class="card pad"><b style="font-size:17px">👤 ' + esc(me()) + '</b><p class="hint">기록(등록 · 수정 · 이동 · 폐기)에 이 이름으로 남아요.</p></div>' +
-    '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내가 사용 중인 물품 ' + mine.length + '개</b><p class="hint">대장의 \'사용자\'가 ' + esc(me()) + '인 물품 (폐기 제외)</p></div>' +
-    (mine.length ? mine.map(function (x) { return '<div class="item" data-k="' + esc(x.code || x.asset) + '"><b>' + esc(x.name) + '</b><div class="s">' + esc(x.asset) + ' · ' + esc(x.loc || '-') + (x.detail ? ' / ' + esc(x.detail) : '') + '</div></div>'; }).join('') :
+  var u = U();
+  var mineItems = S.items.filter(function (x) { return !x.discarded && splitUsers(x.user).indexOf(me()) >= 0; });
+  $('view').innerHTML = '<div class="card"><div class="head"><div class="t">👤 ' + esc(u.name) + '</div><div class="s">' + esc(u.id) + ' · ' + esc(roleTxt(u.role)) + '</div></div>' +
+      '<table><tr><td class="k">근무 현장</td><td>' + esc(isAdmin() ? '전체 (관리자)' : (u.sites.join(', ') || '-')) + '</td></tr><tr><td class="k">할 수 있는 일</td><td style="font-size:14px">' +
+      (isAdmin() ? '모든 현장 전부 + 회원 관리' : u.role === '현장관리자' ? '근무 현장 물품 등록 · 수정 · 이동 · 폐기 · 등록 취소 · 라벨' : '근무 현장 물품 등록 · 수정 · 이동') +
+      '<div class="hint">다른 현장 물품은 보기만 할 수 있어요.</div></td></tr></table></div>' +
+    (isAdmin() ? '<a class="card pad row link" href="#/users"><b>👥 회원 관리</b><span class="more" id="me_wait">›</span></a>' : '') +
+    '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내가 사용 중인 물품 ' + mineItems.length + '개</b><p class="hint">대장의 \'사용자\'가 ' + esc(me()) + '인 물품 (폐기 제외)</p></div>' +
+    (mineItems.length ? mineItems.map(function (x) { return '<div class="item" data-k="' + esc(x.code || x.asset) + '"><b>' + esc(x.name) + '</b><div class="s">' + esc(x.asset) + ' · ' + esc(x.loc || '-') + (x.detail ? ' / ' + esc(x.detail) : '') + '</div></div>'; }).join('') :
       '<div class="muted" style="padding:14px">사용 중인 물품이 없어요</div>') + '</div>' +
     '<div class="card"><div class="pad" style="padding-bottom:6px"><b>내 최근 기록</b></div><div id="myrec" class="hist"><div class="muted">불러오는 중…</div></div></div>' +
-    '<button class="btn sub" id="logout">로그아웃</button>' +
+    '<div class="two"><button class="btn sub" id="chpw">🔑 비밀번호 변경</button><button class="btn sub" id="logout">로그아웃</button></div>' +
     '<p class="hint" style="text-align:center;margin:14px 0 4px">유엔 물품관리 v' + APP_VER + '</p>';
   document.querySelectorAll('.item[data-k]').forEach(function (el) { el.onclick = function () { location.hash = '#/i/' + encodeURIComponent(el.dataset.k); }; });
-  $('logout').onclick = function () { if (confirm('로그아웃할까요? 다시 들어오려면 이름과 PIN이 필요해요.')) logout(); };
+  $('logout').onclick = function () { if (confirm('로그아웃할까요? 다시 들어오려면 아이디와 비밀번호가 필요해요.')) logout(); };
+  $('chpw').onclick = function () { openChangePw(false); };
+  if (isAdmin()) waitCount(function (n) { if ($('me_wait')) $('me_wait').textContent = n ? '승인 대기 ' + n + '명 ›' : '›'; });
   api({ api: 'recent' }).then(function (d) {
     if (!$('myrec')) return;
     var my = d.items.filter(function (h) { return h.who === me(); }).slice(0, 15);
@@ -182,6 +257,85 @@ function viewMe() {
       '<div class="muted" style="padding:14px">최근 기록이 없어요</div>';
   }).catch(function () { if ($('myrec')) $('myrec').innerHTML = '<div class="muted" style="padding:14px">기록을 불러오지 못했어요</div>'; });
 }
+function waitCount(cb) { api({ api: 'users' }).then(function (d) { S.users = d.users; cb(d.users.filter(function (x) { return x.status === '대기'; }).length); }).catch(function () {}); }
+
+// ---------- 회원 관리 (관리자) ----------
+function viewUsers(tab) {
+  $('title').textContent = '회원 관리';
+  if (!isAdmin()) { $('view').innerHTML = '<div class="card pad">관리자만 볼 수 있어요.</div>'; return; }
+  tab = tab || S.userTab || '대기'; S.userTab = tab;
+  $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
+  api({ api: 'users' }).then(function (d) {
+    var us = S.users = d.users, sites = S.meta.sites.map(function (s) { return s.name; });
+    var wait = us.filter(function (x) { return x.status === '대기'; }), ok = us.filter(function (x) { return x.status === '승인'; }), off = us.filter(function (x) { return x.status === '정지' || x.status === '거절'; });
+    var tabs = [['대기', '승인 대기 ' + wait.length], ['현장', '현장별'], ['전체', '전체 ' + ok.length], ['정지', '정지 · 거절 ' + off.length]];
+    var row = function (x) { return '<div class="item" data-id="' + esc(x.id) + '"><div class="row"><b>' + esc(x.name) + ' <span class="hint" style="font-weight:normal">' + esc(x.id) + '</span></b><span class="hint" style="margin:0">' + esc(roleTxt(x.role)) + '</span></div><div class="s">' + esc(x.role === '관리자' ? '전체 현장' : x.sites.join(', ') || '-') + (x.last ? ' · 마지막 접속 ' + esc(String(x.last).slice(5, 16)) : '') + '</div></div>'; };
+    var body = '';
+    if (tab === '대기') body = '<div class="card">' + (wait.length ? wait.map(function (x) {
+      return '<div class="item" style="cursor:default"><div class="row"><b>' + esc(x.name) + ' <span class="hint" style="font-weight:normal">' + esc(x.id) + '</span></b><span class="hint" style="margin:0">' + esc(String(x.joined).slice(5, 10).replace('-', '/')) + '</span></div>' +
+        '<div class="s">신청 현장: ' + esc(x.sites.join(', ')) + '</div>' +
+        '<label style="margin-top:8px">근무 현장</label>' + siteChips('w_s_' + x.id, sites, x.sites) +
+        '<label>권한</label><select id="w_r_' + x.id + '">' + ['직원', '현장관리자', '관리자'].map(function (r) { return '<option value="' + r + '">' + roleTxt(r) + '</option>'; }).join('') + '</select>' +
+        '<div class="two" style="margin-top:10px"><button class="btn no" data-no="' + esc(x.id) + '">거절</button><button class="btn" data-ok="' + esc(x.id) + '">승인</button></div></div>';
+    }).join('') : '<div class="muted">승인 기다리는 신청이 없어요</div>') + '</div>';
+    else if (tab === '현장') body = sites.map(function (s) {
+      var l = ok.filter(function (x) { return x.role === '관리자' || x.sites.indexOf(s) >= 0; });
+      return '<div class="card"><div class="pad row" style="padding-bottom:6px"><b>' + esc(s) + '</b><span class="hint" style="margin:0">' + l.length + '명</span></div>' + (l.length ? l.map(row).join('') : '<div class="muted" style="padding:10px">아직 없어요</div>') + '</div>';
+    }).join('') + '<p class="hint" style="text-align:center">관리자는 모든 현장에 함께 보여요.</p>';
+    else body = '<div class="card">' + ((tab === '전체' ? ok : off).map(function (x) { return row(x).replace('<div class="s">', '<div class="s">' + (tab === '정지' ? '<b>' + esc(x.status) + '</b> · ' : '')); }).join('') || '<div class="muted">없어요</div>') + '</div>';
+    $('view').innerHTML = '<div class="chips" style="padding-top:0">' + tabs.map(function (t) { return '<button class="chip' + (t[0] === tab ? ' on' : '') + '" data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' + body +
+      '<p class="hint" style="text-align:center">회원 정보는 시트의 \'회원\' 탭에도 있어요.</p>';
+    document.querySelectorAll('[data-t]').forEach(function (b) { b.onclick = function () { viewUsers(b.dataset.t); }; });
+    document.querySelectorAll('.item[data-id]').forEach(function (el) { el.onclick = function () { location.hash = '#/user/' + encodeURIComponent(el.dataset.id); }; });
+    wait.forEach(function (x) { bindChips('w_s_' + x.id); });
+    document.querySelectorAll('[data-ok],[data-no]').forEach(function (b) { b.onclick = function () {
+      var id = b.dataset.ok || b.dataset.no, x = us.filter(function (y) { return y.id === id; })[0], yes = !!b.dataset.ok;
+      var p = { api: 'useredit', id: id, status: yes ? '승인' : '거절' };
+      if (yes) { p.role = $('w_r_' + id).value; p.sites = chipVals('w_s_' + id).join(','); }
+      if (!yes && !confirm(x.name + '(' + id + ') 님의 가입을 거절할까요?')) return;
+      if (yes && p.role === '관리자' && !confirm(x.name + ' 님을 관리자(모든 권한)로 승인할까요?')) return;
+      b.disabled = true;
+      api(p).then(function () { toast(x.name + ' 님을 ' + (yes ? '승인' : '거절') + '했어요'); viewUsers('대기'); }).catch(function (e) { b.disabled = false; toast(e.message); });
+    }; });
+  }).catch(function (e) { $('view').innerHTML = '<div class="card pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
+}
+function viewUser(id) {
+  $('title').textContent = '회원 정보';
+  if (!isAdmin()) { $('view').innerHTML = '<div class="card pad">관리자만 볼 수 있어요.</div>'; return; }
+  var load = S.users ? Promise.resolve() : api({ api: 'users' }).then(function (d) { S.users = d.users; });
+  load.then(function () {
+    var x = S.users.filter(function (y) { return y.id === id; })[0], sites = S.meta.sites.map(function (s) { return s.name; });
+    if (!x) { $('view').innerHTML = '<div class="card pad">회원을 찾을 수 없어요.</div>'; return; }
+    var self = x.id === U().id, stopped = x.status === '정지' || x.status === '거절';
+    $('view').innerHTML = '<div class="card"><div class="head"><div class="t">' + esc(x.name) + '</div><div class="s">' + esc(x.id) + ' · ' + esc(x.status) + (x.last ? ' · 마지막 접속 ' + esc(String(x.last).slice(5, 16)) : '') + '</div></div>' +
+      '<div class="pad"><label style="margin-top:0">근무 현장</label>' + siteChips('u_s', sites, x.sites) +
+      '<label>권한</label><select id="u_r">' + ['직원', '현장관리자', '관리자'].map(function (r) { return '<option value="' + r + '"' + (r === x.role ? ' selected' : '') + '>' + roleTxt(r) + '</option>'; }).join('') + '</select>' +
+      '<p class="hint">직원: 근무 현장 물품 등록 · 수정 · 이동<br>현장 관리자: + 근무 현장 물품 폐기 · 등록 취소 · 라벨<br>관리자: 모든 현장 전부 + 회원 관리</p>' +
+      '<div id="u_err" class="err"></div><button class="btn" id="u_save" style="margin-top:12px">저장</button>' +
+      '<div class="two" style="margin-top:8px"><button class="btn sub" id="u_reset">비밀번호 초기화</button>' +
+      (self ? '<button class="btn gray" disabled>내 계정</button>' : '<button class="btn ' + (stopped ? '' : 'no') + '" id="u_stop">' + (stopped ? '다시 승인' : '계정 정지') + '</button>') + '</div></div></div>' +
+      (x.memo ? '<div class="card pad"><b>이력</b><p class="hint" style="white-space:pre-line;line-height:1.7">' + esc(x.memo) + '</p></div>' : '');
+    bindChips('u_s');
+    var send = function (p, msg) {
+      p.api = 'useredit'; p.id = x.id;
+      return api(p).then(function (d) { S.users = null; toast(d.changed ? msg || '저장했어요' : '바뀐 내용이 없어요'); viewUser(x.id); }).catch(function (e) { $('u_err').textContent = e.message; });
+    };
+    $('u_save').onclick = function () { send({ role: $('u_r').value, sites: chipVals('u_s').join(',') }); };
+    if ($('u_stop')) $('u_stop').onclick = function () {
+      if (!confirm(stopped ? x.name + ' 님을 다시 승인할까요?' : x.name + ' 님 계정을 정지할까요? 바로 로그아웃되고 쓸 수 없어요.')) return;
+      send({ status: stopped ? '승인' : '정지' }, stopped ? '다시 승인했어요' : '정지했어요');
+    };
+    $('u_reset').onclick = function () {
+      if (!confirm(x.name + ' 님 비밀번호를 초기화할까요? 임시 비밀번호가 만들어지고, 그 사람은 모든 기기에서 로그아웃돼요.')) return;
+      api({ api: 'resetpw', id: x.id }).then(function (d) {
+        openSheet('<h3>🔑 임시 비밀번호</h3><p class="hint">' + esc(d.name) + ' 님에게 직접(말이나 메신저로) 알려 주세요. 이 화면을 닫으면 다시 볼 수 없어요.</p>' +
+          '<div class="fix" style="font-size:24px;letter-spacing:4px;text-align:center;margin:12px 0">' + esc(d.temp) + '</div><p class="hint">로그인하면 새 비밀번호로 바꾸라는 화면이 떠요.</p><button class="btn" id="t_ok" style="margin-top:12px">닫기</button>');
+        $('t_ok').onclick = closeSheet; S.users = null;
+      }).catch(function (e) { $('u_err').textContent = e.message; });
+    };
+  }).catch(function (e) { $('view').innerHTML = '<div class="card pad">불러오지 못했어요.<div class="err">' + esc(e.message) + '</div></div>'; });
+}
+
 function loadAll(force) {
   if (S.items && !force) return Promise.resolve();
   return Promise.all([api({ api: 'meta' }), api({ api: 'list' })]).then(function (r) { S.meta = r[0]; S.items = r[1].items; });
@@ -199,11 +353,16 @@ function route() {
   var r = parts[0] || 'home';
   $('backBtn').style.display = ['home', 'search', 'scan', 'new', 'add'].indexOf(r) < 0 ? '' : 'none';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.r === r); });
-  if (!me() || !store('un_pin')) return viewPin('');
+  if (!store('un_tk') || !U()) return r === 'signup' ? viewSignup() : viewLogin('');
+  if (U().status !== '승인') return viewPending();
+  document.querySelector('nav').style.display = '';
   showMe();
   $('view').innerHTML = '<div class="muted">불러오는 중…</div>';
   loadAll().then(function () {
+    if (U().temp && !S.askedPw) { S.askedPw = true; setTimeout(function () { openChangePw(true); }, 300); }
     if (r === 'me') return viewMe();
+    if (r === 'users') return viewUsers();
+    if (r === 'user') return viewUser(decodeURIComponent(parts[1] || ''));
     if (r === 'i') return viewItem(decodeURIComponent(parts[1] || ''));
     if (r === 'scan') return viewScan();
     if (r === 'new') return viewNew();
@@ -214,7 +373,8 @@ function route() {
     if (r === 'help') return viewHelp(decodeURIComponent(parts[1] || ''));
     viewHome();
   }).catch(function (e) {
-    if (e.needPin) return viewPin(store('un_pin') ? 'PIN이 바뀌었어요. 새 PIN을 입력해 주세요.' : '');
+    if (e.needLogin) return viewLogin('로그인이 풀렸어요. 다시 로그인해 주세요.');
+    if (e.pending) return viewPending();
     $('title').textContent = '유엔 물품관리';
     var off = !navigator.onLine || /fetch|network|load failed/i.test(e.message);
     $('view').innerHTML = '<div class="card pad" style="text-align:center"><div style="font-size:36px">' + (off ? '📶' : '⚠️') + '</div><b>' + (off ? '인터넷 연결을 확인해 주세요' : '불러오지 못했어요') + '</b>' +
@@ -235,14 +395,16 @@ function viewHome() {
   var cnt = {}; live.forEach(function (x) { cnt[x.loc] = (cnt[x.loc] || 0) + 1; });
   var mine = live.filter(function (x) { return splitUsers(x.user).indexOf(me()) >= 0; }).length;
   $('view').innerHTML =
-    '<div style="padding:2px 4px 12px"><b style="font-size:18px">' + esc(me()) + ' 님, 안녕하세요</b><div class="hint">' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + wd + ')</div></div>' +
-    '<a class="card pad row link" href="#/label"><b>🏷 라벨 파일 받기</b><span class="more">›</span></a>' +
+    '<div style="padding:2px 4px 12px"><b style="font-size:18px">' + esc(me()) + ' 님, 안녕하세요</b><div class="hint">' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + wd + ') · ' + esc(isAdmin() ? '관리자' : roleTxt(U().role) + ' · ' + U().sites.join(', ')) + '</div></div>' +
+    (isMgr() ? '<a class="card pad row link" href="#/label"><b>🏷 라벨 파일 받기</b><span class="more">›</span></a>' : '') +
+    (isAdmin() ? '<a class="card pad row link" href="#/users"><b>👥 회원 관리</b><span class="more" id="h_wait">›</span></a>' : '') +
     '<div class="card"><div class="pad row" style="padding-bottom:8px"><b>현장별 물품</b><span class="hint" style="margin:0">총 ' + live.length + '개</span></div>' +
       '<div class="sites">' + S.meta.sites.map(function (s) { return '<button data-s="' + esc(s.name) + '"><span>' + esc(s.name) + '</span><b>' + (cnt[s.name] || 0) + '</b></button>'; }).join('') + '</div></div>' +
     '<a class="card pad row link" href="#/me"><b>👤 내가 쓰는 물품</b><span class="more">' + mine + '개 ›</span></a>' +
     '<div class="card"><div class="pad row" style="padding-bottom:6px"><b>최근 기록</b><a class="more" href="#/recent">전체 보기 ›</a></div><div id="h_rec" class="hist"><div class="muted" style="padding:10px">불러오는 중…</div></div></div>' +
     '<a class="card pad row link" href="#/help" id="h_help"><b>📖 사용법</b><span class="more">기능별 그림 설명 ›</span></a>';
   document.querySelectorAll('.sites button').forEach(function (b) { b.onclick = function () { S.site = b.dataset.s; S.q = ''; location.hash = '#/search'; }; });
+  if (isAdmin()) waitCount(function (n) { if ($('h_wait')) $('h_wait').innerHTML = n ? '<span class="tag" style="font-size:12px">승인 대기 ' + n + '명</span> ›' : '›'; });
   api({ api: 'recent' }).then(function (r) {
     if (!$('h_rec')) return;
     $('h_rec').innerHTML = r.items.length ? r.items.slice(0, 3).map(function (h) {
@@ -252,18 +414,18 @@ function viewHome() {
 }
 
 // ---------- 사용법 (기능별 그림 설명) ----------
-var APP_VER = '1.0 (2026.11.05)';   // 앱 버전 — 바꿀 때마다 올리기
-var HELP_VER = '261105c';   // 사용법 그림을 바꾸면 이 값도 바꾸기 (폰에 예전 그림이 남지 않게)
+var APP_VER = '1.1 (2026.11.17)';   // 앱 버전 — 바꿀 때마다 올리기
+var HELP_VER = '261117a';   // 사용법 그림을 바꾸면 이 값도 바꾸기 (폰에 예전 그림이 남지 않게)
 var HELP = [
-  { g: '처음 시작', id: 'login', t: '🔐 로그인 · 로그아웃', intro: '처음 한 번만 이름과 회사 PIN을 넣으면 돼요.',
-    steps: ['<b>이름</b> 입력 (대장 \'사용자\'에 적힌 이름과 똑같이)', '<b>회사 PIN</b> 입력 (관리자에게 받기)', '<b>[들어가기]</b>'],
-    tips: '이름은 모든 기록(등록 · 수정 · 이동 · 폐기)에 그대로 남아요.<br>다른 사람이 쓰려면 위 <b>[👤 이름]</b> → 맨 아래 <b>[로그아웃]</b>' },
+  { g: '처음 시작', id: 'login', t: '🔐 회원가입 · 로그인', intro: '처음 한 번 회원가입을 신청하고, 관리자가 승인하면 아이디 · 비밀번호로 로그인해요.',
+    steps: ['처음이면 <b>[회원가입 신청]</b> → 이름 · 아이디 · 비밀번호 · <b>근무 현장</b> 넣고 신청 → 관리자 승인 기다리기 (승인되면 <b>[승인됐는지 확인]</b>)', '<b>아이디</b> 입력', '<b>비밀번호</b> 입력', '<b>[로그인]</b> (이 기기에서는 한 번만 하면 돼요)'],
+    tips: '내 이름이 모든 기록(등록 · 수정 · 이동 · 폐기)에 자동으로 남아요.<br>근무 현장 물품만 고칠 수 있고, 다른 현장 물품은 보기만 돼요.<br>비밀번호를 잊으면 관리자에게 초기화를 부탁하세요. 바꾸기: 위 <b>[👤 이름]</b> → <b>[🔑 비밀번호 변경]</b>' },
   { g: '처음 시작', id: 'home', t: '🏠 홈 화면', intro: '앱을 열면 처음 보이는 화면이에요.',
     steps: ['<b>현장별 물품</b>: 누르면 그 현장 물품만 검색 화면에 보여요', '<b>내가 쓰는 물품</b>: 누르면 내 정보 화면', '<b>사용법</b>: 지금 이 설명'],
     tips: '라벨 파일 받기 · 최근 기록도 홈에서 바로 갈 수 있어요.' },
   { g: '처음 시작', id: 'me', t: '👤 내 정보', intro: '내가 사용 중인 물품과 내가 한 기록을 모아 봐요.',
-    steps: ['위 <b>[👤 이름]</b> 누르기', '<b>내가 사용 중인 물품</b> (누르면 물품 화면)', '<b>내 최근 기록</b>', '<b>[로그아웃]</b>'],
-    tips: '대장의 \'사용자\'가 내 이름과 똑같은 물품만 나와요.' },
+    steps: ['위 <b>[👤 이름]</b> 누르기', '<b>근무 현장 · 할 수 있는 일</b> 확인 (아래에 내가 쓰는 물품 · 내 최근 기록)', '<b>[🔑 비밀번호 변경]</b>', '<b>[로그아웃]</b>'],
+    tips: '대장의 \'사용자\'가 내 이름과 똑같은 물품만 나와요. 근무 현장 · 권한을 바꾸려면 관리자에게 말해 주세요.' },
   { g: '물품 보기', id: 'search', t: '🔍 물품 찾기', intro: '품명 · 자산번호 · 사용자 · 모델명 · 상세위치로 찾아요.',
     steps: ['아래 메뉴 <b>[🔍 검색]</b>', '검색창에 찾을 말 입력', '<b>현장 버튼</b>으로 거르기', '<b>[품명순]</b>을 누르면 같은 품명끼리 모여요', '물품을 누르면 자세한 화면'],
     tips: '폐기한 물품은 숨겨져 있어요. 보려면 \'폐기 물품 숨기기\' 체크를 끄세요.' },
@@ -321,7 +483,8 @@ function viewHelp(id) {
 // ---------- 검색 ----------
 function viewSearch() {
   $('title').textContent = '물품 검색';
-  var sites = ['전체'].concat(S.meta.sites.map(function (s) { return s.name; }));
+  if (!S.site) S.site = isAdmin() ? '전체' : '내 현장';
+  var sites = (isAdmin() ? ['전체'] : ['내 현장', '전체']).concat(S.meta.sites.map(function (s) { return s.name; }));
   $('view').innerHTML =
     '<input id="q" type="search" placeholder="품명, 자산번호, 사용자, 모델명 검색" value="' + esc(S.q) + '">' +
     '<div class="chips">' + sites.map(function (s) { return '<button class="chip' + (s === S.site ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') + '</div>' +
@@ -339,7 +502,7 @@ function filtered() {   // 지금 검색어 · 현장 칩 · 폐기 숨기기 �
   var q = S.q.trim().toLowerCase();
   return S.items.filter(function (it) {
     if (S.hideOld && it.discarded) return false;
-    if (S.site !== '전체' && it.loc !== S.site) return false;
+    if (S.site === '내 현장') { if (!mine(it)) return false; } else if (S.site && S.site !== '전체' && it.loc !== S.site) return false;
     return !q || [it.asset, it.name, it.model, it.spec, it.user, it.loc, it.detail, it.note, it.vendor].join(' ').toLowerCase().indexOf(q) >= 0;
   }).sort(S.sort === 'name' ? function (a, b) { return a.name.localeCompare(b.name, 'ko') || a.asset.localeCompare(b.asset, 'ko'); } : function () { return 0; });
 }
@@ -348,7 +511,7 @@ function renderList() {
   $('count').textContent = list.length + '개';
   $('xls').disabled = !list.length;
   $('list').innerHTML = list.length ? list.slice(0, S.limit || 200).map(function (it) {
-    return '<div class="item" data-k="' + esc(it.code || it.asset) + '"><b>' + esc(it.asset) + '</b>' + (it.discarded ? '<span class="tag">폐기</span>' : '') +
+    return '<div class="item" data-k="' + esc(it.code || it.asset) + '"><b>' + esc(it.asset) + '</b>' + (it.discarded ? '<span class="tag">폐기</span>' : '') + (mine(it) ? '' : '<span class="tag" style="background:#fff3d6;color:#8a6100">보기만</span>') +
       '<div class="s">' + esc([it.name, it.model].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="s">📍 ' + esc(it.loc || '-') + (it.detail ? ' · ' + esc(it.detail) : '') + ' &nbsp; 👤 ' + esc(it.user || '-') + '</div></div>';
   }).join('') : '<div class="muted">찾는 물품이 없어요</div>';
@@ -362,7 +525,7 @@ function renderList() {
 function exportList() {
   var list = filtered(), head = ['자산번호', '품명', '모델명', '규격사양', '현재위치', '상세위치', '사용자', '비고', '렌탈업체', '렌탈기간', '출처 시트 · 행'];
   var rows = [head].concat(list.map(function (x) { return [x.asset, x.name, x.model, x.spec, x.loc, x.detail, x.user, x.note, x.vendor, x.rental, x.sheet + ' ' + x.row]; }));
-  var tag = [S.site !== '전체' ? S.site : '', S.q.trim()].filter(Boolean).join('_');
+  var tag = [S.site && S.site !== '전체' ? S.site : '', S.q.trim()].filter(Boolean).join('_');
   downloadXlsx('물품목록' + (tag ? '_' + tag : '') + '_' + ymd() + '.xlsx', [{ name: '물품목록', rows: rows, widths: [28, 12, 22, 20, 10, 18, 10, 30, 14, 22, 14] }]);
   toast(list.length + '개 목록을 받았어요');
 }
@@ -380,18 +543,21 @@ function viewItem(key) {
     ['라벨', it.printed ? '🏷 ' + it.printed + ' 출력' : '아직 안 뽑음', 1]].filter(function (r) { return r[2] || String(r[1] || '').trim(); });   // 빈 칸은 숨기기 (품명 · 현재위치 · 사용자 · 라벨은 항상)
   $('view').innerHTML =
     '<div class="card"><div class="head"><div class="t">' + esc(it.asset) + '</div><div class="s">' + esc(it.sheet) + ' 시트 ' + it.row + '행' + (it.discarded ? ' · 폐기' : '') + '</div></div>' +
+    (mine(it) ? '' : '<div style="background:#fff7e0;color:#8a6100;padding:10px 16px;font-size:13px;border-bottom:1px solid #f0e2b6">👁 다른 현장(' + esc(it.loc || it.sheet) + ') 물품이라 <b>보기만</b> 할 수 있어요</div>') +
     '<table>' + rows.map(function (r) { return '<tr><td class="k">' + r[0] + '</td><td>' + (r[1] ? esc(r[1]) : '-') + '</td></tr>'; }).join('') + '</table></div>' +
-    '<div class="card pad"><b>관리</b>' +
+    (!mine(it) ? '' : '<div class="card pad"><b>관리</b>' +
       (it.discarded ? '<p class="hint">폐기 · 취소된 물품이에요. 되돌리려면 아래 기록에서 [↩ 되돌리기]를 눌러요.</p><div class="two" style="margin-top:10px"><button class="btn sub" id="a_edit">✏️ 수정</button></div>' :
       '<div class="two" style="margin-top:10px"><button class="btn sub" id="a_edit">✏️ 수정</button><button class="btn" id="a_move">🚚 이동</button></div>' +
       '<div class="two" style="margin-top:8px"><button class="btn no" id="a_dis">🗑 폐기</button><button class="btn gray" id="a_del">↶ 등록 취소</button></div>' +
-      '<p class="hint">이동: 다른 현장 · 자리로 옮길 때 · 폐기: 고장 · 분실 · 노후<br>등록 취소: 잘못 등록했을 때만 · 품명 · 현장(프로젝트명)은 라벨 보호를 위해 못 바꿔요</p>') + '</div>' +
+      '<p class="hint">이동: 다른 현장 · 자리로 옮길 때 · 폐기: 고장 · 분실 · 노후<br>등록 취소: 잘못 등록했을 때만 · 품명 · 현장(프로젝트명)은 라벨 보호를 위해 못 바꿔요' + (canManage(it) ? '' : '<br>폐기 · 등록 취소는 현장 관리자 · 관리자만 할 수 있어요') + '</p>') + '</div>') +
     '<div class="card"><div class="pad" style="padding-bottom:8px"><b>기록</b></div><div id="hist" class="hist"><div class="muted">불러오는 중…</div></div></div>';
-  $('a_edit').onclick = function () { openEdit(it, key); };
-  if (!it.discarded) {
-    $('a_del').onclick = function () { openCancel(it, key); };
-    $('a_move').onclick = function () { openMove(it, key); };
-    $('a_dis').onclick = function () { openDiscard(it, key); };
+  if (mine(it)) {
+    $('a_edit').onclick = function () { openEdit(it, key); };
+    if (!it.discarded) {
+      $('a_move').onclick = function () { openMove(it, key); };
+      if (canManage(it)) { $('a_del').onclick = function () { openCancel(it, key); }; $('a_dis').onclick = function () { openDiscard(it, key); }; }
+      else { $('a_del').disabled = true; $('a_dis').disabled = true; }
+    }
   }
   loadHistory(it);
 }
@@ -522,9 +688,9 @@ $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
 function opts(arr) { return '<option value="">선택</option>' + arr.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join(''); }
 function viewNew() {
   $('title').textContent = '새 물품 등록';
-  var sites = S.meta.sites.map(function (s) { return s.name; });
+  var sites = mySites();
   $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">입력하면 바로 대장 맨 아래에 들어가요. 수량만큼 줄이 나뉘고 자산번호 · QR이 자동으로 생겨요. 잘못 넣었으면 물품 화면에서 수정하거나 등록 취소할 수 있어요.</p>' +
-    '<label>현장 (구매한 곳 · 출처)</label><select id="d_site">' + opts(sites) + '</select>' +
+    '<label>현장 (구매한 곳 · 출처)</label><select id="d_site">' + (sites.length === 1 ? '<option>' + esc(sites[0]) + '</option>' : opts(sites)) + '</select>' +
     '<label>품명</label><select id="d_pn">' + nameOpts('') + '</select>' +
     '<div class="two"><div><label>모델명</label><input id="d_model"></div><div><label>규격사양</label><input id="d_spec"></div></div>' +
     '<div class="two"><div><label>수량</label><input id="d_qty" type="number" min="1" max="99" value="1"></div><div><label>현재위치</label><select id="d_loc"><option value="">현장과 같게</option>' + siteOpts('') + '</select></div></div>' +
@@ -644,7 +810,8 @@ function readQR(f) {
 function viewLabel() {
   $('title').textContent = '라벨 파일 받기';
   var pre = S.labelPreset || {}; S.labelPreset = null;
-  var sites = S.meta.sites.map(function (s) { return s.name; });
+  var sites = mySites();
+  if (!isMgr() || !sites.length) { $('view').innerHTML = '<div class="card pad">라벨은 현장 관리자 · 관리자만 받을 수 있어요. 필요하면 관리자에게 부탁해 주세요.</div>'; return; }
   var sel = {}, q = '', hidePrinted = true;
   $('view').innerHTML = '<div class="card pad"><p class="hint" style="margin-top:0">현장을 고르고 라벨을 뽑을 물품만 체크해서 P-touch용 엑셀을 받아요. (시트 순서대로 · 새로 넣은 물품은 맨 아래 · 폐기 물품 제외 · 받은 물품은 \'출력함\'으로 표시돼요)</p>' +
     '<label>현장 (출처 시트)</label><select id="l_site">' + sites.map(function (s) { return '<option' + (s === pre.site ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
